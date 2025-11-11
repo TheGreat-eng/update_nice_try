@@ -6,8 +6,8 @@ services:
   # ==================== Frontend (React + Nginx) ====================
   frontend:
     build:
-      context: ./nicetryFrontend2
-    container_name: smartfarm-frontend12
+      context: ./nicetryFrontend12
+    container_name: smartfarm-frontend123
     ports:
       - "${FRONTEND_PORT:-3000}:80"
     networks:
@@ -17,12 +17,16 @@ services:
   # ==================== Backend (Spring Boot) ====================
   backend:
     build:
-      context: ./nicetryBackend1
-    container_name: smartfarm-backend12
+      context: ./nicetryBackend12
+    container_name: smartfarm-backend123
     ports:
       - "${BACKEND_PORT:-8080}:8080"
     environment:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE}?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=${TZ}&useUnicode=true&characterEncoding=UTF-8
+       # <<<< THÊM DÒNG NÀY VÀO >>>>
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update # <<<< GIỮ NGUYÊN
+      SPRING_SQL_INIT_MODE: always
+      SPRING_JPA_DEFER_DATASOURCE_INITIALIZATION: true # <<<< THÊM DÒNG NÀY
       SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
       SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
       INFLUXDB_URL: http://influxdb:8086
@@ -37,7 +41,7 @@ services:
       JWT_EXPIRATION: ${JWT_EXPIRATION}
       OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY}
       OPENWEATHER_API_URL: ${OPENWEATHER_API_URL}
-      AI_SERVICE_URL: ${AI_SERVICE_URL}
+      
       SPRING_MAIL_HOST: ${SPRING_MAIL_HOST}
       SPRING_MAIL_PORT: ${SPRING_MAIL_PORT}
       SPRING_MAIL_USERNAME: ${SPRING_MAIL_USERNAME}
@@ -59,8 +63,6 @@ services:
         condition: service_started
       redis:
         condition: service_started
-      ai-service:
-        condition: service_healthy
 
     networks:
       - smartfarm-net
@@ -69,7 +71,7 @@ services:
   # ==================== MySQL (Database) ====================
   mysql:
     image: mysql:8.0
-    container_name: smartfarm-mysql12
+    container_name: smartfarm-mysql123
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
@@ -93,7 +95,7 @@ services:
   # ==================== InfluxDB (Time-series DB) ====================
   influxdb:
     image: influxdb:2.7
-    container_name: smartfarm-influxdb12
+    container_name: smartfarm-influxdb1234
     environment:
       - DOCKER_INFLUXDB_INIT_MODE=setup
       - DOCKER_INFLUXDB_INIT_USERNAME=${DOCKER_INFLUXDB_INIT_USERNAME}
@@ -118,7 +120,7 @@ services:
   # ==================== MQTT Broker (Mosquitto) ====================
   mosquitto:
     image: eclipse-mosquitto:2.0
-    container_name: smartfarm-mosquitto12
+    container_name: smartfarm-mosquitto123
     ports:
       - "${MQTT_HOST_PORT:-1883}:1883"
       - "${MQTT_WS_HOST_PORT:-9001}:9001"
@@ -134,7 +136,7 @@ services:
   # ==================== Redis (Caching) ====================
   redis:
     image: redis:7-alpine
-    container_name: smartfarm-redis12
+    container_name: smartfarm-redis123
     ports:
       - "${REDIS_HOST_PORT:-6379}:6379"
     volumes:
@@ -148,27 +150,8 @@ services:
       retries: 5
     command: redis-server --appendonly yes
     restart: unless-stopped
-    
-  # ==================== AI Service (Placeholder) ====================
-  ai-service:
-    build:
-      context: ./AppAI
-    container_name: smartfarm-ai-service12
-    ports:
-      - "${AI_SERVICE_HOST_PORT:-5001}:5001"
-    networks:
-      - smartfarm-net
-    restart: unless-stopped
-    environment:
-      TZ: ${TZ}
-      WEATHER_API_KEY: ${OPENWEATHER_API_KEY}
-    # VVVV--- THÊM PHẦN NÀY ---VVVV
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5001/health"] # Test xem có nhận được response từ trang chủ không
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s 
+  
+
 
 # ==================== Networks & Volumes ====================
 networks:
