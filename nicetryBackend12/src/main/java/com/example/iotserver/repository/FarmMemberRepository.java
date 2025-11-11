@@ -13,5 +13,7 @@ public interface FarmMemberRepository extends JpaRepository<FarmMember, Long> {
 
     List<FarmMember> findByFarmId(Long farmId);
 
+    List<FarmMember> findByUserId(Long userId);
+
     void deleteByFarmIdAndUserId(Long farmId, Long userId);
 }

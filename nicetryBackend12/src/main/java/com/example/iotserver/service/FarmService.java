@@ -2,6 +2,7 @@ package com.example.iotserver.service;
 
 import com.example.iotserver.dto.FarmDTO;
 import com.example.iotserver.entity.Farm;
+import com.example.iotserver.entity.FarmMember; // <<<< THÊM IMPORT NÀY
 import com.example.iotserver.entity.Rule;
 import com.example.iotserver.entity.User;
 import com.example.iotserver.enums.DeviceStatus;
@@ -18,12 +19,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
-import org.springframework.cache.annotation.Cacheable; // <-- THÊM IMPORT
-import org.springframework.cache.annotation.CacheEvict; // <-- THÊM IMPORT
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.CacheEvict;
 
-import com.example.iotserver.enums.FarmRole; // <<<< THÊM IMPORT
+import com.example.iotserver.enums.FarmRole;
 
 @Service
 @Slf4j
@@ -234,5 +236,34 @@ public class FarmService {
         throw new SecurityException(String.format(
                 "Người dùng ID %d không có quyền '%s' cho nông trại ID %d.",
                 userId, requiredRole, farmId));
+    }
+
+    @Transactional(readOnly = true)
+    public List<FarmDTO> getFarmsByUser(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "id", userId));
+
+        List<Farm> ownedFarms = farmRepository.findByOwnerId(userId);
+        List<FarmMember> memberships = farmMemberRepository.findByUserId(userId);
+
+        List<FarmDTO> result = new ArrayList<>();
+
+        // ✅ SET ROLE CHO OWNER
+        for (Farm farm : ownedFarms) {
+            FarmDTO dto = mapToDTO(farm, userId);
+            dto.setCurrentUserRole("OWNER"); // ✅ QUAN TRỌNG
+            log.debug("Farm {} - Owner role set for user {}", farm.getId(), userId);
+            result.add(dto);
+        }
+
+        // ✅ SET ROLE CHO MEMBER
+        for (FarmMember member : memberships) {
+            FarmDTO dto = mapToDTO(member.getFarm(), userId);
+            dto.setCurrentUserRole(member.getRole().name()); // OPERATOR hoặc VIEWER
+            log.debug("Farm {} - Member role {} set for user {}", member.getFarm().getId(), member.getRole(), userId);
+            result.add(dto);
+        }
+
+        return result;
     }
 }
