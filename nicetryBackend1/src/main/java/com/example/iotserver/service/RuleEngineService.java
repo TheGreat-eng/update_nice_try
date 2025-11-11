@@ -33,7 +33,8 @@ public class RuleEngineService {
     private final WebSocketService webSocketService;
     private final ObjectMapper objectMapper;
     private final WeatherService weatherService;
-    private final EmailService emailService;
+    // private final EmailService emailService;
+    private final NotificationService notificationService; // <<<< THÊM DÒNG NÀY
 
     /**
      * Chạy tất cả quy tắc đang kích hoạt
@@ -41,9 +42,27 @@ public class RuleEngineService {
     @Transactional
     public void executeAllRules() {
         long startTime = System.currentTimeMillis();
-
         List<Rule> enabledRules = ruleRepository.findAllEnabledRules();
         log.debug("Đang kiểm tra {} quy tắc đang kích hoạt", enabledRules.size());
+
+        // <<<< 1. TẠO CACHE TẠM THỜI >>>>
+        // Lấy tất cả deviceId cần thiết từ tất cả các quy tắc trong 1 lần
+        Set<String> allDeviceIds = enabledRules.stream()
+                .flatMap(rule -> rule.getConditions().stream())
+                .filter(cond -> cond.getType() == RuleCondition.ConditionType.SENSOR_VALUE
+                        && cond.getDeviceId() != null)
+                .map(RuleCondition::getDeviceId)
+                .collect(Collectors.toSet());
+
+        // Lấy dữ liệu cho tất cả thiết bị cần thiết trong 1 lần lặp
+        Map<String, SensorDataDTO> sensorDataCache = new HashMap<>();
+        for (String deviceId : allDeviceIds) {
+            // Lần gọi này có thể được cache ở tầng service nếu bạn cấu hình @Cacheable
+            // nhưng làm thế này cũng đã giảm đáng kể việc gọi lặp đi lặp lại
+            sensorDataCache.put(deviceId, sensorDataService.getLatestSensorData(deviceId));
+        }
+        log.debug("Đã cache dữ liệu cho {} thiết bị.", sensorDataCache.size());
+        // <<<< KẾT THÚC PHẦN TẠO CACHE >>>>
 
         int successCount = 0;
         int skippedCount = 0;
@@ -51,7 +70,8 @@ public class RuleEngineService {
 
         for (Rule rule : enabledRules) {
             try {
-                boolean executed = executeRule(rule);
+                // <<<< 2. TRUYỀN CACHE VÀO PHƯƠNG THỨC THỰC THI >>>>
+                boolean executed = executeRule(rule, sensorDataCache);
                 if (executed) {
                     successCount++;
                 } else {
@@ -72,7 +92,7 @@ public class RuleEngineService {
      * Thực thi một quy tắc cụ thể
      */
     @Transactional
-    public boolean executeRule(Rule rule) {
+    public boolean executeRule(Rule rule, Map<String, SensorDataDTO> sensorDataCache) {
         long startTime = System.currentTimeMillis();
 
         log.debug("Đang kiểm tra quy tắc: {}", rule.getName());
@@ -80,7 +100,7 @@ public class RuleEngineService {
         try {
             // Bước 1: Kiểm tra điều kiện
             Map<String, Object> conditionContext = new HashMap<>();
-            boolean allConditionsMet = evaluateConditions(rule, conditionContext);
+            boolean allConditionsMet = evaluateConditions(rule, conditionContext, sensorDataCache);
 
             long executionTime = System.currentTimeMillis() - startTime;
 
@@ -125,7 +145,8 @@ public class RuleEngineService {
     /**
      * Kiểm tra tất cả điều kiện của quy tắc
      */
-    private boolean evaluateConditions(Rule rule, Map<String, Object> context) {
+    private boolean evaluateConditions(Rule rule, Map<String, Object> context,
+            Map<String, SensorDataDTO> sensorDataCache) {
         if (rule.getConditions().isEmpty()) {
             log.warn("Quy tắc '{}' không có điều kiện nào", rule.getName());
             return false;
@@ -141,7 +162,7 @@ public class RuleEngineService {
 
         for (int i = 0; i < sortedConditions.size(); i++) {
             RuleCondition condition = sortedConditions.get(i);
-            boolean conditionMet = evaluateSingleCondition(condition, context);
+            boolean conditionMet = evaluateSingleCondition(condition, context, sensorDataCache);
 
             // Kết hợp với điều kiện trước đó
             if (i == 0) {
@@ -168,16 +189,17 @@ public class RuleEngineService {
     /**
      * Kiểm tra một điều kiện đơn
      */
-    private boolean evaluateSingleCondition(RuleCondition condition, Map<String, Object> context) {
+    private boolean evaluateSingleCondition(RuleCondition condition, Map<String, Object> context,
+            Map<String, SensorDataDTO> sensorDataCache) {
         switch (condition.getType()) {
             case SENSOR_VALUE:
-                return evaluateSensorCondition(condition, context);
+                return evaluateSensorCondition(condition, context, sensorDataCache);
             case TIME_RANGE:
-                return evaluateTimeCondition(condition, context);
+                return evaluateSensorCondition(condition, context, sensorDataCache);
             case DEVICE_STATUS:
-                return evaluateDeviceStatusCondition(condition, context);
+                return evaluateSensorCondition(condition, context, sensorDataCache);
             case WEATHER: // ✅ THÊM MỚI
-                return evaluateWeatherCondition(condition, context);
+                return evaluateSensorCondition(condition, context, sensorDataCache);
             default:
                 log.warn("Loại điều kiện không được hỗ trợ: {}", condition.getType());
                 return false;
@@ -187,7 +209,8 @@ public class RuleEngineService {
     /**
      * Kiểm tra điều kiện về giá trị cảm biến
      */
-    private boolean evaluateSensorCondition(RuleCondition condition, Map<String, Object> context) {
+    private boolean evaluateSensorCondition(RuleCondition condition, Map<String, Object> context,
+            Map<String, SensorDataDTO> sensorDataCache) {
         try {
             String deviceId = condition.getDeviceId();
 
@@ -205,7 +228,7 @@ public class RuleEngineService {
                 return false;
             }
 
-            SensorDataDTO sensorData = sensorDataService.getLatestSensorData(deviceId);
+            SensorDataDTO sensorData = sensorDataCache.get(deviceId);
 
             log.info("🔍 [Rule Check] Sensor data từ InfluxDB: {}", sensorData != null ? "CÓ DỮ LIỆU" : "NULL");
 
@@ -438,18 +461,10 @@ public class RuleEngineService {
             return "Lỗi: Không tìm thấy email của chủ nông trại.";
         }
 
-        String subject = "[SmartFarm] Quy tắc tự động đã kích hoạt: " + rule.getName();
-        String text = "Xin chào,\n\n"
-                + "Quy tắc tự động của bạn đã được kích hoạt tại nông trại '" + rule.getFarm().getName() + "'.\n\n"
-                + "Tên quy tắc: " + rule.getName() + "\n"
-                + "Thông điệp: " + action.getMessage() + "\n\n"
-                + "Hệ thống đã thực hiện hành động tương ứng.\n\n"
-                + "Trân trọng,\n"
-                + "Đội ngũ SmartFarm.";
+        // Giao việc cho NotificationService
+        notificationService.notifyForRule(rule, action);
 
-        emailService.sendSimpleMessage(ownerEmail, subject, text);
-
-        return "Đã gửi email cảnh báo (từ quy tắc) tới: " + ownerEmail;
+        return "Đã yêu cầu gửi email (từ quy tắc) tới: " + ownerEmail;
     }
 
     /**

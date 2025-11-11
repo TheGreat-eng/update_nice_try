@@ -33,7 +33,8 @@ public class PlantHealthService {
     private final PlantHealthAlertRepository alertRepository;
     private final SensorDataService sensorDataService;
     private final ObjectMapper objectMapper;
-    private final EmailService emailService; // <<<< 2. INJECT EMAILSERVICE
+    // private final EmailService emailService; // <<<< 2. INJECT EMAILSERVICE
+    private final NotificationService notificationService; // <<<< THAY BẰNG DÒNG NÀY
     private final FarmRepository farmRepository; // <<<< 2. INJECT FARMREPOSITORY
 
     // Các ngưỡng cảnh báo
@@ -78,7 +79,9 @@ public class PlantHealthService {
         }
 
         // <<<< 3. GỌI HÀM GỬI EMAIL >>>>
-        sendEmailForNewHealthAlerts(newAlerts);
+        Farm farm = farmRepository.findById(farmId)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy Farm để gửi thông báo sức khỏe."));
+        sendEmailForNewHealthAlerts(farm, newAlerts);
 
         // Lấy lại danh sách đầy đủ sau khi đã thêm mới (nếu có)
         List<PlantHealthAlert> allActiveAlerts = alertRepository
@@ -529,44 +532,14 @@ public class PlantHealthService {
         log.info("🧹 Đã dọn dẹp các cảnh báo cũ trước ngày {}", cutoffDate);
     }
 
-    private void sendEmailForNewHealthAlerts(List<PlantHealthAlert> newAlerts) {
+    // <<<< VIẾT LẠI HOÀN TOÀN PHƯƠNG THỨC NÀY >>>>
+    private void sendEmailForNewHealthAlerts(Farm farm, List<PlantHealthAlert> newAlerts) {
         if (newAlerts.isEmpty())
             return;
 
-        Long farmId = newAlerts.get(0).getFarmId();
-        Farm farm = farmRepository.findById(farmId).orElse(null);
-
-        if (farm == null || farm.getOwner() == null || farm.getOwner().getEmail() == null) {
-            log.warn("Không thể gửi email cảnh báo sức khỏe cho farmId {} vì thiếu thông tin chủ sở hữu.", farmId);
-            return;
-        }
-        String ownerEmail = farm.getOwner().getEmail();
-
         for (PlantHealthAlert alert : newAlerts) {
-            if (alert.getSeverity() == Severity.LOW) {
-                log.info("Bỏ qua gửi email cho cảnh báo sức khỏe mức độ thấp: {}", alert.getAlertType());
-                continue;
-            }
-
-            String subject = String.format("[SmartFarm Cảnh Báo - %s] %s tại %s",
-                    alert.getSeverity().getDisplayName().toUpperCase(),
-                    alert.getAlertType().getDisplayName(),
-                    farm.getName());
-
-            String text = String.format(
-                    "Xin chào,\n\n" +
-                            "Hệ thống SmartFarm vừa phát hiện một cảnh báo sức khỏe cây trồng bất thường tại nông trại '%s'.\n\n"
-                            +
-                            "--- CHI TIẾT CẢNH BÁO ---\n" +
-                            "Loại cảnh báo: %s\n" + "Mức độ: %s\n" + "Mô tả: %s\n" + "Gợi ý xử lý: %s\n"
-                            + "Thời điểm: %s\n\n" +
-                            "Vui lòng đăng nhập vào hệ thống để xem chi tiết.\n\n" +
-                            "Trân trọng,\n" + "Đội ngũ SmartFarm.",
-                    farm.getName(), alert.getAlertType().getDisplayName(), alert.getSeverity().getDisplayName(),
-                    alert.getDescription(), alert.getSuggestion(), alert.getDetectedAt().toString());
-
-            emailService.sendSimpleMessage(ownerEmail, subject, text);
-            log.info("Đã gửi email cảnh báo sức khỏe ({}) tới {}", alert.getAlertType(), ownerEmail);
+            // Giao hết việc cho NotificationService, nó sẽ tự quyết định có gửi hay không
+            notificationService.notifyPlantHealthAlert(farm, alert);
         }
     }
 

@@ -36,7 +36,8 @@ public class DeviceService {
     private final FarmRepository farmRepository;
     private final SensorDataService sensorDataService;
     private final WebSocketService webSocketService; // Thêm dependency này
-    private final EmailService emailService; // <<<< 2. INJECT EMAILSERVICE
+    // private final EmailService emailService; // <<<< 2. INJECT EMAILSERVICE
+    private final NotificationService notificationService; // <<<< THAY BẰNG DÒNG NÀY
 
     // ✅ THÊM: Inject MQTT Gateway
     private final MqttGateway mqttGateway;
@@ -221,7 +222,9 @@ public class DeviceService {
                 webSocketService.sendDeviceStatus(device.getFarm().getId(), device.getDeviceId(), "OFFLINE");
             }
             // <<<< 3. GỌI HÀM GỬI EMAIL >>>>
-            sendOfflineNotificationIfNeeded(device);
+            if (ChronoUnit.MINUTES.between(device.getLastSeen(), LocalDateTime.now()) >= 60) {
+                notificationService.notifyDeviceOffline(device);
+            }
         }
     }
 
@@ -300,46 +303,6 @@ public class DeviceService {
         }
 
         return dto;
-    }
-
-    // <<<< 4. THÊM HÀM MỚI NÀY VÀO CUỐI FILE >>>>
-    /**
-     * Gửi email thông báo nếu thiết bị offline quá lâu và chưa được thông báo gần
-     * đây.
-     */
-    private void sendOfflineNotificationIfNeeded(Device device) {
-        if (device.getStatus() != DeviceStatus.OFFLINE)
-            return;
-
-        long minutesOffline = ChronoUnit.MINUTES.between(device.getLastSeen(), LocalDateTime.now());
-        if (minutesOffline < 60)
-            return; // Phải offline ít nhất 1 giờ
-
-        if (device.getLastOfflineNotificationAt() != null &&
-                ChronoUnit.HOURS.between(device.getLastOfflineNotificationAt(), LocalDateTime.now()) < 6) {
-            return; // Chỉ gửi lại sau mỗi 6 giờ
-        }
-
-        Farm farm = device.getFarm();
-        String ownerEmail = farm.getOwner().getEmail();
-
-        if (ownerEmail != null && !ownerEmail.isEmpty()) {
-            String subject = String.format("[SmartFarm Cảnh Báo] Thiết bị '%s' đã offline", device.getName());
-            String text = String.format(
-                    "Xin chào,\n\n" +
-                            "Thiết bị '%s' (ID: %s) tại nông trại '%s' đã mất kết nối hơn %d phút.\n\n" +
-                            "Lần cuối nhận tín hiệu: %s\n\n" +
-                            "Vui lòng kiểm tra nguồn điện và kết nối mạng của thiết bị.\n\n" +
-                            "Trân trọng,\n" + "Đội ngũ SmartFarm.",
-                    device.getName(), device.getDeviceId(), farm.getName(),
-                    minutesOffline, device.getLastSeen().toString());
-
-            emailService.sendSimpleMessage(ownerEmail, subject, text);
-            log.info("Đã gửi email cảnh báo offline cho thiết bị {} tới {}", device.getDeviceId(), ownerEmail);
-
-            device.setLastOfflineNotificationAt(LocalDateTime.now());
-            deviceRepository.save(device);
-        }
     }
 
     // ✅ THÊM: Helper method để map type linh hoạt
