@@ -1,0 +1,5 @@
+soil_moisture_predictor.joblib
+sensor_data.csv
+plant_disease_model.h5
+class_indices.json
+sensor_data.csv

@@ -1,0 +1,12 @@
+# AppAI/requirements.txt
+
+Flask
+joblib
+pandas
+scikit-learn
+tensorflow
+numpy
+opencv-python-headless
+requests
+python-dotenv
+gunicorn # Thư viện để chạy app trong production
