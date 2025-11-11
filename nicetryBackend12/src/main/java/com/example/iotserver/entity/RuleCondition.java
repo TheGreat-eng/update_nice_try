@@ -46,10 +46,12 @@ public class RuleCondition {
     // Logic kết hợp với điều kiện tiếp theo (AND / OR)
     @Enumerated(EnumType.STRING)
     @Column(name = "logical_operator")
+    @Builder.Default // <<<< THÊM
     private LogicalOperator logicalOperator = LogicalOperator.AND;
 
     // Thứ tự ưu tiên
     @Column(name = "order_index")
+    @Builder.Default // <<<< THÊM
     private Integer orderIndex = 0;
 
     // Các enum

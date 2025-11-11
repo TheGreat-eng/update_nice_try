@@ -1,6 +1,6 @@
 // src/pages/CreateRulePage.tsx
-import React, { useEffect, useState } from 'react';
-import { Form, Input, Button, Select, Space, Card, Typography, message } from 'antd';
+import React, { useEffect, useState, useMemo } from 'react';
+import { Form, Input, Select, Space, Card, Typography, message, Spin } from 'antd';
 import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { createRule } from '../api/ruleService';
@@ -8,6 +8,11 @@ import type { Rule } from '../types/rule';
 import { useFarm } from '../context/FarmContext';
 import type { Device } from '../types/device';
 import { getDevicesByFarm } from '../api/deviceService';
+
+import { Result, Button } from 'antd'; // <<<< THÊM IMPORT
+import { getFarms } from '../api/farmService';
+import { useQuery } from '@tanstack/react-query';
+
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -21,26 +26,64 @@ const CreateRulePage: React.FC = () => {
     const [actuators, setActuators] = useState<Device[]>([]);
     const [loading, setLoading] = useState(false);
 
+    // <<<< THÊM LOGIC KIỂM TRA QUYỀN >>>>
+    const { data: farms, isLoading: isLoadingFarms } = useQuery({
+        queryKey: ['farms'],
+        queryFn: () => getFarms().then(res => res.data.data),
+    });
+
+
+
+
+    const currentUserPermission = useMemo(() => {
+        if (!farmId || !farms) return 'VIEWER';
+        const currentFarm = farms.find(f => f.id === farmId);
+        return currentFarm?.currentUserRole || 'VIEWER';
+    }, [farmId, farms]);
+
+    const canManage = currentUserPermission === 'OWNER' || currentUserPermission === 'OPERATOR';
+
     useEffect(() => {
-        const fetchDevices = async () => {
-            if (!farmId) return;
-            try {
-                const response = await getDevicesByFarm(farmId);
-                const allDevices: Device[] = response.data.data; // Lấy dữ liệu và gán vào biến cục bộ
+        if (canManage && farmId) {
+            const fetchDevices = async () => {
+                if (!farmId) return;
+                try {
+                    const response = await getDevicesByFarm(farmId);
+                    const allDevices: Device[] = response.data.data; // Lấy dữ liệu và gán vào biến cục bộ
 
-                // setDevices(allDevices); // <-- XÓA DÒNG NÀY
+                    // setDevices(allDevices); // <-- XÓA DÒNG NÀY
 
-                // Dùng trực tiếp biến 'allDevices' để set sensors và actuators
-                setSensors(allDevices.filter(d => d.type.startsWith('SENSOR')));
-                setActuators(allDevices.filter(d => d.type.startsWith('ACTUATOR')));
-            } catch (error) {
-                console.error('Failed to fetch devices:', error);
-                message.error('Không thể tải danh sách thiết bị');
-            }
-        };
+                    // Dùng trực tiếp biến 'allDevices' để set sensors và actuators
+                    setSensors(allDevices.filter(d => d.type.startsWith('SENSOR')));
+                    setActuators(allDevices.filter(d => d.type.startsWith('ACTUATOR')));
+                } catch (error) {
+                    console.error('Failed to fetch devices:', error);
+                    message.error('Không thể tải danh sách thiết bị');
+                }
+            };
 
-        fetchDevices();
-    }, [farmId]);
+            fetchDevices();
+        }
+    }, [farmId, canManage]);
+
+
+    if (isLoadingFarms) {
+        return <Spin tip="Đang kiểm tra quyền..." />;
+    }
+
+
+    if (!canManage) {
+        return (
+            <Result
+                status="403"
+                title="403 - Không có quyền truy cập"
+                subTitle="Xin lỗi, bạn không có quyền thực hiện hành động này."
+                extra={<Button type="primary" onClick={() => navigate('/rules')}>Quay về danh sách</Button>}
+            />
+        );
+    }
+
+
 
     const onFinish = async (values: any) => {
         setLoading(true);

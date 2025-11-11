@@ -58,4 +58,7 @@ public class FarmDTO implements Serializable { // <-- THÊM "implements Serializ
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime lastActivityAt;
+
+    // <<<< THÊM TRƯỜNG MỚI NÀY VÀO >>>>
+    private String currentUserRole; // OWNER, OPERATOR, VIEWER
 }

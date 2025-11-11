@@ -6,7 +6,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useFarm } from '../context/FarmContext';
 import { useTheme } from '../context/ThemeContext';
 import { getFarms } from '../api/farmService';
-import { clearAuthData, getUserFromToken, getAuthToken } from '../utils/auth';
+import { clearAuthData, getUserFromStorage } from '../utils/auth';
 import type { Farm } from '../types/farm';
 import GlobalSearch from '../components/GlobalSearch';
 
@@ -20,7 +20,8 @@ const AppHeader: React.FC = () => {
     const { isDark, toggleTheme } = useTheme();
     const [farms, setFarms] = useState<Farm[]>([]);
     const [loadingFarms, setLoadingFarms] = useState(false);
-    const user = getUserFromToken(getAuthToken() || '');
+
+    const user = getUserFromStorage();
 
     useEffect(() => {
         const fetchFarms = async () => {
@@ -137,7 +138,8 @@ const AppHeader: React.FC = () => {
                         <Space>
                             <Avatar style={{ backgroundColor: '#818cf8' }} icon={<User size={18} />} />
                             <span style={{ fontWeight: 500 }}>
-                                {user?.fullName || user?.email?.split('@')[0] || 'User'}
+                                { /* <<<< SỬA LẠI LOGIC HIỂN THỊ TÊN >>>> */}
+                                {user?.fullName || user?.email || 'User'}
                             </span>
                         </Space>
                     </a>

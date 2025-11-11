@@ -85,10 +85,16 @@ public class FarmController {
      * GET /api/farms
      */
     @GetMapping
-    @Operation(summary = "Lấy danh sách nông trại của người dùng hiện tại")
+    @Operation(summary = "Lấy danh sách tất cả nông trại người dùng có quyền truy cập")
     public ResponseEntity<List<FarmDTO>> getUserFarms(Authentication authentication) {
         Long userId = getUserIdFromAuth(authentication);
-        List<FarmDTO> farms = farmService.getUserFarms(userId);
+
+        // <<<< ĐÂY LÀ THAY ĐỔI QUAN TRỌNG NHẤT >>>>
+        // Thay vì gọi getUserFarms (chỉ lấy farm của owner)
+        // List<FarmDTO> farms = farmService.getUserFarms(userId);
+        // Chúng ta sẽ gọi getFarmsWithAccess (lấy cả farm được chia sẻ)
+        List<FarmDTO> farms = farmService.getFarmsWithAccess(userId);
+
         return ResponseEntity.ok(farms);
     }
 

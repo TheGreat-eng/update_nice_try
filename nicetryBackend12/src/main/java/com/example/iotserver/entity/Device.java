@@ -50,7 +50,7 @@ public class Device {
     // Device thuộc về Farm (nếu business yêu cầu)
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "farm_id", nullable = false)
-    @ToString.Exclude
+    // @ToString.Exclude
     private Farm farm;
 
     @Column(name = "last_seen")

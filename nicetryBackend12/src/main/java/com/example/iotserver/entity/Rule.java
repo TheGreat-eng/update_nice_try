@@ -35,6 +35,7 @@ public class Rule {
 
     // Quy tắc có kích hoạt không?
     @Column(nullable = false)
+    @Builder.Default // <<<< THÊM
     private Boolean enabled = true;
 
     // Mức độ ưu tiên (số càng lớn càng ưu tiên)

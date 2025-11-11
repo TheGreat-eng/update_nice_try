@@ -11,7 +11,8 @@ export interface Farm {
     // <<<< BỔ SUNG CÁC TRƯỜNG CÒN THIẾU DƯỚI ĐÂY >>>>
     ownerId: number;
     ownerEmail: string;
-    createdAt: string; // Backend trả về chuỗi ISO date
+    createdAt: string;
+    currentUserRole: 'OWNER' | 'OPERATOR' | 'VIEWER'; // <<<< THÊM DÒNG NÀY
 }
 
 export interface FarmFormData {

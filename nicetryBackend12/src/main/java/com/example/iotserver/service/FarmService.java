@@ -23,6 +23,8 @@ import java.util.stream.Collectors;
 import org.springframework.cache.annotation.Cacheable; // <-- THÊM IMPORT
 import org.springframework.cache.annotation.CacheEvict; // <-- THÊM IMPORT
 
+import com.example.iotserver.enums.FarmRole; // <<<< THÊM IMPORT
+
 @Service
 @Slf4j
 @RequiredArgsConstructor
@@ -35,6 +37,7 @@ public class FarmService {
     private final DeviceRepository deviceRepository;
     private final RuleService ruleService; // Dùng lại logic xóa Rule phức tạp
     private final FarmMemberRepository farmMemberRepository; // <<<< THÊM VÀO
+    private final AuthenticationService authenticationService; // Thêm nếu chưa có
 
     @Transactional
     public FarmDTO createFarm(Long userId, FarmDTO dto) {
@@ -51,7 +54,7 @@ public class FarmService {
         Farm saved = farmRepository.save(farm);
         log.info("Created farm: {} for user: {}", saved.getId(), userId);
 
-        return mapToDTO(saved);
+        return mapToDTO(saved, userId);
     }
 
     @Transactional
@@ -76,7 +79,7 @@ public class FarmService {
         Farm updated = farmRepository.save(farm);
         log.info("Updated farm: {}", updated.getId());
 
-        return mapToDTO(updated);
+        return mapToDTO(updated, userId);
     }
 
     @Transactional
@@ -122,31 +125,29 @@ public class FarmService {
             throw new SecurityException("Chỉ chủ sở hữu mới có quyền sửa thông tin nông trại.");
         }
 
-        return mapToDTO(farm);
+        return mapToDTO(farm, userId);
     }
 
     public List<FarmDTO> getUserFarms(Long userId) {
         return farmRepository.findByOwnerId(userId)
                 .stream()
-                .map(this::mapToDTO)
+                .map(farm -> mapToDTO(farm, userId)) // <<<< SỬA LẠI LẦN GỌI NÀY >>>>
                 .collect(Collectors.toList());
     }
 
+    // Sửa lại các hàm gọi mapToDTO
     public List<FarmDTO> getFarmsWithAccess(Long userId) {
-        // Tạm thời chỉ trả về farms của owner
-        // Sau này có thể mở rộng thêm logic member
         return farmRepository.findFarmsByUserAccess(userId)
                 .stream()
-                .map(this::mapToDTO)
+                // <<<< SỬA LẠI CÁCH GỌI NÀY (dùng lambda expression) >>>>
+                .map(farm -> mapToDTO(farm, userId))
                 .collect(Collectors.toList());
     }
 
-    private FarmDTO mapToDTO(Farm farm) {
-
-        // VVVV--- THÊM 2 DÒNG TRUY VẤN NÀY ---VVVV
+    // <<<< SỬA LẠI PHƯƠNG THỨC MAP NÀY >>>>
+    private FarmDTO mapToDTO(Farm farm, Long currentUserId) {
         long totalDevices = deviceRepository.countByFarmId(farm.getId());
         long onlineDevices = deviceRepository.countByFarmIdAndStatus(farm.getId(), DeviceStatus.ONLINE);
-        // ^^^^----------------------------------^^^^
 
         FarmDTO dto = new FarmDTO();
         dto.setId(farm.getId());
@@ -158,11 +159,16 @@ public class FarmService {
         dto.setOwnerName(farm.getOwner().getFullName());
         dto.setCreatedAt(farm.getCreatedAt());
         dto.setUpdatedAt(farm.getUpdatedAt());
-
-        // VVVV--- GÁN CÁC GIÁ TRỊ VỪA ĐẾM ĐƯỢC VÀO DTO ---VVVV
         dto.setTotalDevices(totalDevices);
         dto.setOnlineDevices(onlineDevices);
-        // ^^^^---------------------------------------------^^^^
+
+        // Logic xác định vai trò
+        if (farm.getOwner().getId().equals(currentUserId)) {
+            dto.setCurrentUserRole("OWNER");
+        } else {
+            farmMemberRepository.findByFarmIdAndUserId(farm.getId(), currentUserId)
+                    .ifPresent(member -> dto.setCurrentUserRole(member.getRole().name()));
+        }
 
         return dto;
     }
@@ -191,5 +197,42 @@ public class FarmService {
 
         throw new SecurityException(
                 String.format("Người dùng ID %d không có quyền truy cập nông trại ID %d.", userId, farmId));
+    }
+
+    // <<<< THÊM PHƯƠNG THỨC MỚI NÀY >>>>
+    /**
+     * Kiểm tra xem người dùng có một vai trò cụ thể (hoặc cao hơn) trong nông trại
+     * hay không.
+     * 
+     * @param userId       ID người dùng
+     * @param farmId       ID nông trại
+     * @param requiredRole Vai trò tối thiểu cần có (OWNER, OPERATOR, VIEWER)
+     */
+    public void checkUserPermissionForFarm(Long userId, Long farmId, FarmRole requiredRole) {
+        Farm farm = farmRepository.findById(farmId)
+                .orElseThrow(() -> new ResourceNotFoundException("Farm", "id", farmId));
+
+        // 1. Chủ sở hữu luôn có mọi quyền
+        if (farm.getOwner().getId().equals(userId)) {
+            return; // OK
+        }
+
+        // 2. Kiểm tra vai trò của thành viên
+        var memberOpt = farmMemberRepository.findByFarmIdAndUserId(farmId, userId);
+        if (memberOpt.isPresent()) {
+            FarmRole userRole = memberOpt.get().getRole();
+            // OPERATOR có quyền của VIEWER, nhưng VIEWER không có quyền của OPERATOR
+            if (requiredRole == FarmRole.OPERATOR && userRole == FarmRole.OPERATOR) {
+                return; // OK
+            }
+            if (requiredRole == FarmRole.VIEWER && (userRole == FarmRole.OPERATOR || userRole == FarmRole.VIEWER)) {
+                return; // OK
+            }
+        }
+
+        // Nếu không thỏa mãn các điều kiện trên -> Ném lỗi
+        throw new SecurityException(String.format(
+                "Người dùng ID %d không có quyền '%s' cho nông trại ID %d.",
+                userId, requiredRole, farmId));
     }
 }

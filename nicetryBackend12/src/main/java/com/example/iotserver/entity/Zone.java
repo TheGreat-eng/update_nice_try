@@ -33,7 +33,7 @@ public class Zone {
     @ManyToOne
     @JoinColumn(name = "farm_id", nullable = false)
     @JsonBackReference("farm-zones")
-    @ToString.Exclude
+    // @ToString.Exclude
     private Farm farm;
 
     @CreationTimestamp

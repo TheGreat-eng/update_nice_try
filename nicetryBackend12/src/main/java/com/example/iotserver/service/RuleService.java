@@ -9,29 +9,51 @@ import com.example.iotserver.entity.RuleExecutionLog;
 import com.example.iotserver.repository.FarmRepository;
 import com.example.iotserver.repository.RuleExecutionLogRepository;
 import com.example.iotserver.repository.RuleRepository;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import com.example.iotserver.entity.User;
+import com.example.iotserver.enums.FarmRole;
 
 import java.util.List;
 import java.util.stream.Collectors;
 
 @Service
 @Slf4j
-@RequiredArgsConstructor
 public class RuleService {
 
     private final RuleRepository ruleRepository;
     private final FarmRepository farmRepository;
     private final RuleExecutionLogRepository logRepository;
+    private final AuthenticationService authenticationService;
+    private final FarmService farmService;
+
+    // <<<< SỬA: Thêm @Lazy vào constructor parameter >>>>
+    public RuleService(
+            RuleRepository ruleRepository,
+            FarmRepository farmRepository,
+            RuleExecutionLogRepository logRepository,
+            AuthenticationService authenticationService,
+            @Lazy FarmService farmService) { // <-- THÊM @Lazy VÀO ĐÂY
+        this.ruleRepository = ruleRepository;
+        this.farmRepository = farmRepository;
+        this.logRepository = logRepository;
+        this.authenticationService = authenticationService;
+        this.farmService = farmService;
+    }
 
     /**
      * Tạo quy tắc mới
      */
     @Transactional
     public RuleDTO createRule(Long farmId, RuleDTO dto) {
+        // <<<< BƯỚC KIỂM TRA QUYỀN >>>>
+        User currentUser = authenticationService.getCurrentAuthenticatedUser();
+        farmService.checkUserPermissionForFarm(currentUser.getId(), farmId, FarmRole.OPERATOR);
+
         Farm farm = farmRepository.findById(farmId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy nông trại"));
 
@@ -91,6 +113,10 @@ public class RuleService {
         Rule rule = ruleRepository.findById(ruleId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy quy tắc"));
 
+        // <<<< BƯỚC KIỂM TRA QUYỀN >>>>
+        User currentUser = authenticationService.getCurrentAuthenticatedUser();
+        farmService.checkUserPermissionForFarm(currentUser.getId(), rule.getFarm().getId(), FarmRole.OPERATOR);
+
         // Cập nhật thông tin cơ bản
         if (dto.getName() != null)
             rule.setName(dto.getName());
@@ -149,6 +175,10 @@ public class RuleService {
         Rule rule = ruleRepository.findById(ruleId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy quy tắc"));
 
+        // <<<< BƯỚC KIỂM TRA QUYỀN >>>>
+        User currentUser = authenticationService.getCurrentAuthenticatedUser();
+        farmService.checkUserPermissionForFarm(currentUser.getId(), rule.getFarm().getId(), FarmRole.OPERATOR);
+
         // ====> THÊM LOGIC XÓA CÁC BẢN GHI CON TRƯỚC <====
 
         // 1. Tìm tất cả các log thuộc về quy tắc này
@@ -204,6 +234,10 @@ public class RuleService {
     public RuleDTO toggleRule(Long ruleId, Boolean enabled) {
         Rule rule = ruleRepository.findById(ruleId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy quy tắc"));
+
+        // <<<< BƯỚC KIỂM TRA QUYỀN >>>>
+        User currentUser = authenticationService.getCurrentAuthenticatedUser();
+        farmService.checkUserPermissionForFarm(currentUser.getId(), rule.getFarm().getId(), FarmRole.OPERATOR);
 
         rule.setEnabled(enabled);
         Rule updated = ruleRepository.save(rule);

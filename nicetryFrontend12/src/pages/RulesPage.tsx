@@ -1,12 +1,17 @@
 // src/pages/RulesPage.tsx
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Switch, Button, Typography, Spin, message, Popconfirm, Alert, Card, Row, Col, Space, Tag, Empty } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { getRulesByFarm, deleteRule, toggleRuleStatus } from '../api/ruleService'; // ✅ Import đầy đủ
 import type { Rule } from '../types/rule';
 import { useFarm } from '../context/FarmContext';
+
+
+// <<<< THÊM CÁC IMPORT NÀY >>>>
+import { useQuery } from '@tanstack/react-query';
+import { getFarms } from '../api/farmService';
 
 const { Title, Text } = Typography;
 
@@ -15,6 +20,21 @@ const RulesPage: React.FC = () => {
     const [rules, setRules] = useState<Rule[]>([]);
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
+
+    // <<<< 1. LẤY THÔNG TIN QUYỀN CỦA USER >>>>
+    const { data: farms } = useQuery({
+        queryKey: ['farms'], // Tái sử dụng cache từ các trang khác
+        queryFn: () => getFarms().then(res => res.data.data),
+    });
+
+
+    const currentUserPermission = useMemo(() => {
+        if (!farmId || !farms) return 'VIEWER';
+        const currentFarm = farms.find(f => f.id === farmId);
+        return currentFarm?.currentUserRole || 'VIEWER';
+    }, [farmId, farms]);
+
+    const canManage = currentUserPermission === 'OWNER' || currentUserPermission === 'OPERATOR';
 
     const fetchRules = async () => {
         if (!farmId) {
@@ -102,9 +122,13 @@ const RulesPage: React.FC = () => {
                     <Title level={2} style={{ margin: 0 }}>Quy tắc Tự động</Title>
                     <Text type="secondary">Tự động hóa hành động dựa trên dữ liệu cảm biến.</Text>
                 </div>
-                <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/rules/create')}>
-                    Tạo quy tắc mới
-                </Button>
+
+                {/* <<<< 2. THÊM ĐIỀU KIỆN `canManage` CHO NÚT TẠO MỚI >>>> */}
+                {canManage && (
+                    <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/rules/create')}>
+                        Tạo quy tắc mới
+                    </Button>
+                )}
             </div>
 
             {loading && <div style={{ textAlign: 'center', padding: 50 }}><Spin /></div>}
@@ -117,19 +141,25 @@ const RulesPage: React.FC = () => {
                                 title={rule.name}
                                 extra={
                                     <Space>
+                                        {/* <<<< 3. THÊM ĐIỀU KIỆN `canManage` CHO CÁC NÚT HÀNH ĐỘNG >>>> */}
                                         <Switch
                                             checkedChildren={<CheckOutlined />}
                                             unCheckedChildren={<CloseOutlined />}
                                             checked={rule.enabled}
                                             onChange={(checked) => handleToggle(rule.id!, checked)}
+                                            disabled={!canManage} // Vô hiệu hóa nếu không có quyền
                                         />
-                                        <Button size="small" icon={<EditOutlined />} onClick={() => navigate(`/rules/edit/${rule.id}`)} />
-                                        <Popconfirm
-                                            title="Xóa quy tắc này?"
-                                            onConfirm={() => handleDelete(rule.id!)}
-                                        >
-                                            <Button size="small" danger icon={<DeleteOutlined />} />
-                                        </Popconfirm>
+                                        {canManage && (
+                                            <>
+                                                <Button size="small" icon={<EditOutlined />} onClick={() => navigate(`/rules/edit/${rule.id}`)} />
+                                                <Popconfirm
+                                                    title="Xóa quy tắc này?"
+                                                    onConfirm={() => handleDelete(rule.id!)}
+                                                >
+                                                    <Button size="small" danger icon={<DeleteOutlined />} />
+                                                </Popconfirm>
+                                            </>
+                                        )}
                                     </Space>
                                 }
                             >

@@ -27,6 +27,9 @@ import org.springframework.cache.annotation.Cacheable; // <-- THÊM IMPORT
 import org.springframework.cache.annotation.CacheEvict; // <-- THÊM IMPORT
 import java.time.temporal.ChronoUnit; // <<<< 1. THÊM IMPORT
 
+import com.example.iotserver.entity.User; // <<<< THÊM IMPORT
+import com.example.iotserver.enums.FarmRole; // <<<< THÊM IMPORT
+
 @Service
 @Slf4j
 @RequiredArgsConstructor
@@ -39,11 +42,19 @@ public class DeviceService {
     // private final EmailService emailService; // <<<< 2. INJECT EMAILSERVICE
     private final NotificationService notificationService; // <<<< THAY BẰNG DÒNG NÀY
 
+    private final AuthenticationService authenticationService; // <<<< THÊM
+    private final FarmService farmService; // <<<< THÊM
+
     // ✅ THÊM: Inject MQTT Gateway
     private final MqttGateway mqttGateway;
 
     @Transactional
     public DeviceDTO createDevice(Long farmId, DeviceDTO dto) {
+
+        User currentUser = authenticationService.getCurrentAuthenticatedUser();
+        farmService.checkUserPermissionForFarm(currentUser.getId(), farmId, FarmRole.OPERATOR); // Yêu cầu quyền
+                                                                                                // OPERATOR
+
         Farm farm = farmRepository.findById(farmId)
                 .orElseThrow(() -> new RuntimeException("Farm not found"));
 
@@ -79,6 +90,10 @@ public class DeviceService {
         Device device = deviceRepository.findById(deviceId)
                 .orElseThrow(() -> new RuntimeException("Device not found"));
 
+        // <<<< BƯỚC KIỂM TRA QUYỀN >>>>
+        User currentUser = authenticationService.getCurrentAuthenticatedUser();
+        farmService.checkUserPermissionForFarm(currentUser.getId(), device.getFarm().getId(), FarmRole.OPERATOR);
+
         if (dto.getName() != null)
             device.setName(dto.getName());
         if (dto.getDescription() != null)
@@ -100,6 +115,10 @@ public class DeviceService {
     public void deleteDevice(Long deviceId) {
         Device device = deviceRepository.findById(deviceId)
                 .orElseThrow(() -> new RuntimeException("Device not found"));
+
+        // <<<< BƯỚC KIỂM TRA QUYỀN >>>>
+        User currentUser = authenticationService.getCurrentAuthenticatedUser();
+        farmService.checkUserPermissionForFarm(currentUser.getId(), device.getFarm().getId(), FarmRole.OPERATOR);
 
         deviceRepository.delete(device);
         log.info("Deleted device: {}", device.getDeviceId());
@@ -182,6 +201,10 @@ public class DeviceService {
     public void controlDevice(String deviceId, String action, Map<String, Object> params) {
         Device device = deviceRepository.findByDeviceId(deviceId)
                 .orElseThrow(() -> new RuntimeException("Device not found"));
+
+        // <<<< BƯỚC KIỂM TRA QUYỀN >>>>
+        User currentUser = authenticationService.getCurrentAuthenticatedUser();
+        farmService.checkUserPermissionForFarm(currentUser.getId(), device.getFarm().getId(), FarmRole.OPERATOR);
 
         if (!isActuator(device.getType())) {
             throw new RuntimeException("Device is not controllable");

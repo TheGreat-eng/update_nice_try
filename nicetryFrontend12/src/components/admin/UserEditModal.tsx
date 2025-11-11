@@ -1,10 +1,16 @@
 // src/components/admin/UserEditModal.tsx
 
 import React, { useEffect } from 'react';
-import { Modal, Form, Input, Button, Switch, message, Divider, Popconfirm } from 'antd';
+import { Modal, Form, Input, Button, Switch, message, Divider, Popconfirm, Typography } from 'antd';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { updateUserAsAdmin, setPasswordAsAdmin } from '../../api/adminService';
 import type { AdminUser } from '../../types/admin';
+
+
+
+
+const { Title } = Typography;
+
 
 interface UserEditModalProps {
     user: AdminUser | null;

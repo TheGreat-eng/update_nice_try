@@ -1,7 +1,7 @@
 // src/pages/EditRulePage.tsx
 
-import React, { useEffect, useState } from 'react';
-import { Form, Input, Button, Select, Space, Card, Typography, message, Spin, Alert } from 'antd';
+import React, { useEffect, useState, useMemo } from 'react';
+import { Form, Input, Select, Space, Card, Typography, message, Spin, Alert } from 'antd';
 import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getRuleById, updateRule } from '../api/ruleService';
@@ -9,6 +9,11 @@ import type { Rule } from '../types/rule';
 import { useFarm } from '../context/FarmContext';
 import { getDevicesByFarm } from '../api/deviceService';
 import type { Device } from '../types/device';
+
+import { Result, Button } from 'antd'; // <<<< THÊM IMPORT
+import { getFarms } from '../api/farmService';
+import { useQuery } from '@tanstack/react-query';
+
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -21,43 +26,76 @@ const EditRulePage: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false); // Thêm state cho lúc submit
     const [error, setError] = useState<string | null>(null);
-
     // State để lưu danh sách thiết bị
     const [sensors, setSensors] = useState<Device[]>([]);
     const [actuators, setActuators] = useState<Device[]>([]);
 
+
+    // <<<< THÊM LOGIC KIỂM TRA QUYỀN >>>>
+    const { data: farms, isLoading: isLoadingFarms } = useQuery({
+        queryKey: ['farms'],
+        queryFn: () => getFarms().then(res => res.data.data),
+    });
+
+    const currentUserPermission = useMemo(() => {
+        if (!farmId || !farms) return 'VIEWER';
+        const currentFarm = farms.find(f => f.id === farmId);
+        return currentFarm?.currentUserRole || 'VIEWER';
+    }, [farmId, farms]);
+
+    const canManage = currentUserPermission === 'OWNER' || currentUserPermission === 'OPERATOR';
+
+
+
     // Effect để tải dữ liệu quy tắc và danh sách thiết bị
     useEffect(() => {
         if (!ruleId || !farmId) return;
+        if (canManage && farmId) {
+            const fetchData = async () => {
+                setLoading(true);
+                try {
+                    // Tải đồng thời cả hai
+                    const [ruleResponse, devicesResponse] = await Promise.all([
+                        getRuleById(parseInt(ruleId)),
+                        getDevicesByFarm(farmId)
+                    ]);
 
-        const fetchData = async () => {
-            setLoading(true);
-            try {
-                // Tải đồng thời cả hai
-                const [ruleResponse, devicesResponse] = await Promise.all([
-                    getRuleById(parseInt(ruleId)),
-                    getDevicesByFarm(farmId)
-                ]);
+                    // Xử lý dữ liệu quy tắc
+                    form.setFieldsValue(ruleResponse.data.data);
 
-                // Xử lý dữ liệu quy tắc
-                form.setFieldsValue(ruleResponse.data.data);
+                    // Xử lý danh sách thiết bị
+                    const allDevices = devicesResponse.data.data;
+                    setSensors(allDevices.filter(d => d.type.startsWith('SENSOR')));
+                    setActuators(allDevices.filter(d => d.type.startsWith('ACTUATOR')));
 
-                // Xử lý danh sách thiết bị
-                const allDevices = devicesResponse.data.data;
-                setSensors(allDevices.filter(d => d.type.startsWith('SENSOR')));
-                setActuators(allDevices.filter(d => d.type.startsWith('ACTUATOR')));
+                    setError(null);
+                } catch (err) {
+                    console.error("Failed to fetch data:", err);
+                    setError("Không thể tải thông tin quy tắc hoặc danh sách thiết bị.");
+                } finally {
+                    setLoading(false);
+                }
+            };
 
-                setError(null);
-            } catch (err) {
-                console.error("Failed to fetch data:", err);
-                setError("Không thể tải thông tin quy tắc hoặc danh sách thiết bị.");
-            } finally {
-                setLoading(false);
-            }
-        };
+            fetchData();
+        }
+    }, [ruleId, farmId, form, canManage]);
 
-        fetchData();
-    }, [ruleId, farmId, form]);
+
+    if (isLoadingFarms) {
+        return <Spin tip="Đang kiểm tra quyền..." />;
+    }
+
+    if (!canManage) {
+        return (
+            <Result
+                status="403"
+                title="403 - Không có quyền truy cập"
+                subTitle="Xin lỗi, bạn không có quyền thực hiện hành động này."
+                extra={<Button type="primary" onClick={() => navigate('/rules')}>Quay về danh sách</Button>}
+            />
+        );
+    }
 
     const onFinish = async (values: any) => {
         if (!ruleId) return;

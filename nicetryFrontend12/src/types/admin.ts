@@ -8,6 +8,7 @@ export interface AdminUser {
     deleted: boolean;
     createdAt: string;
     lastLogin: string;
+    phoneNumber: string | null; // <<<< THÊM DÒNG NÀY
 }
 
 export interface AdminStats {

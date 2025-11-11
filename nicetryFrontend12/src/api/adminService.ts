@@ -43,3 +43,14 @@ export const getSystemSettings = () => {
 export const updateSystemSettings = (settings: Record<string, string>) => {
     return api.put('/admin/settings', settings);
 };
+
+
+
+// <<<< BỔ SUNG CÁC HÀM MỚI DƯỚI ĐÂY >>>>
+export const updateUserAsAdmin = (userId: number, data: { fullName: string; phoneNumber: string; enabled: boolean }) => {
+    return api.put(`/admin/users/${userId}`, data);
+};
+
+export const setPasswordAsAdmin = (userId: number, newPassword: string) => {
+    return api.post(`/admin/users/${userId}/set-password`, { newPassword });
+};

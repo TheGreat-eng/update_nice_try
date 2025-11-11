@@ -50,10 +50,10 @@ export const getUserFromToken = (token: string): any | null => {
     try {
         const decoded = jwtDecode<DecodedToken>(token);
         return {
-            userId: decoded.userId || decoded.sub,
-            // username: decoded.sub.split('@')[0], // <-- XÓA DÒNG NÀY
+            userId: decoded.userId || decoded.sub, // Lấy userId nếu có
             email: decoded.sub,
-            fullName: decoded.fullName || decoded.name || null,
+            // <<<< SỬA LẠI LOGIC NÀY >>>>
+            fullName: decoded.fullName || decoded.name || null, // Lấy fullName hoặc name từ token
             roles: decoded.roles || ['FARMER']
         };
     } catch (error) {
@@ -61,6 +61,7 @@ export const getUserFromToken = (token: string): any | null => {
         return null;
     }
 };
+
 
 /**
  * Kiểm tra user có role cụ thể không

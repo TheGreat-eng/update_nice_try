@@ -2,7 +2,10 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { Table, Button, Space, Tag, Popconfirm, Input, Spin, Alert, Tooltip, Typography, Modal, message } from 'antd'; // Thêm Tooltip, Badge
-import { PlusOutlined, DownloadOutlined, EditOutlined, DeleteOutlined, SyncOutlined, ThunderboltOutlined, WifiOutlined as WifiIcon, StopOutlined } from '@ant-design/icons';
+import {
+    PlusOutlined, DownloadOutlined, EditOutlined, DeleteOutlined,
+    SyncOutlined, ThunderboltOutlined, WifiOutlined as WifiIcon, StopOutlined,
+} from '@ant-design/icons';
 import { getDevicesByFarm, createDevice, updateDevice, deleteDevice, controlDevice } from '../api/deviceService';
 import type { Device } from '../types/device';
 import { useFarm } from '../context/FarmContext';
@@ -22,6 +25,8 @@ import type { DeviceStatusMessage } from '../types/websocket';
 
 
 import { TableSkeleton } from '../components/LoadingSkeleton';
+import { useQuery } from '@tanstack/react-query';
+import { getFarms } from '../api/farmService';
 
 const { Title, Text } = Typography;
 
@@ -37,6 +42,23 @@ const PageHeader = ({ title, subtitle, actions }: { title: string, subtitle: str
 
 const DevicesPage: React.FC = () => {
     const { farmId, isLoadingFarm } = useFarm(); // ✅ THÊM isLoadingFarm
+
+
+    // <<<< 1. LẤY DANH SÁCH FARM ĐỂ TÌM FARM HIỆN TẠI >>>>
+    const { data: farms } = useQuery({
+        queryKey: ['farms'],
+        queryFn: () => getFarms().then(res => res.data.data),
+    });
+
+    // <<<< 2. XÁC ĐỊNH QUYỀN CỦA USER >>>>
+    const currentUserPermission = useMemo(() => {
+        if (!farmId || !farms) return 'VIEWER'; // Mặc định là VIEWER nếu không có thông tin
+        const currentFarm = farms.find(f => f.id === farmId);
+        return currentFarm?.currentUserRole || 'VIEWER';
+    }, [farmId, farms]);
+
+    const canManage = currentUserPermission === 'OWNER' || currentUserPermission === 'OPERATOR';
+
     const [devices, setDevices] = useState<Device[]>([]);
     const [isModalVisible, setIsModalVisible] = useState(false);
     const [editingDevice, setEditingDevice] = useState<Device | null>(null);
@@ -370,19 +392,27 @@ const DevicesPage: React.FC = () => {
             fixed: 'right' as const,
             render: (_: any, record: Device) => (
                 <Space size="small">
-                    <Tooltip title="Sửa">
-                        <Button type="text" icon={<EditOutlined />} onClick={() => showModal(record)} />
-                    </Tooltip>
-                    <Tooltip title="Xóa">
-                        <Popconfirm
-                            title="Xóa thiết bị?"
-                            onConfirm={() => handleDelete(record.id)}
-                            okText="Xóa"
-                            cancelText="Hủy"
-                        >
-                            <Button type="text" danger icon={<DeleteOutlined />} />
-                        </Popconfirm>
-                    </Tooltip>
+                    {/* <<<< 3. THÊM ĐIỀU KIỆN `canManage` >>>> */}
+                    {canManage && (
+                        <>
+                            <Tooltip title="Sửa">
+                                <Button type="text" icon={<EditOutlined />} onClick={() => showModal(record)} />
+                            </Tooltip>
+                            <Tooltip title="Xóa">
+                                <Popconfirm
+                                    title="Xóa thiết bị?"
+                                    onConfirm={() => handleDelete(record.id)}
+                                    okText="Xóa"
+                                    cancelText="Hủy"
+                                >
+                                    <Button type="text" danger icon={<DeleteOutlined />} />
+                                </Popconfirm>
+                            </Tooltip>
+
+                        </>
+                    )}
+
+
                     <Tooltip title="Xuất CSV">
                         <Button type="text" icon={<DownloadOutlined />} onClick={() => {
                             const end = new Date().toISOString();
@@ -416,9 +446,12 @@ const DevicesPage: React.FC = () => {
                             allowClear
                         />
                         <Button icon={<SyncOutlined />} onClick={fetchDevices} loading={loading} />
-                        <Button type="primary" icon={<PlusOutlined />} onClick={() => showModal()}>
-                            Thêm mới
-                        </Button>
+                        {/* <<<< 4. THÊM ĐIỀU KIỆN `canManage` CHO NÚT THÊM MỚI >>>> */}
+                        {canManage && (
+                            <Button type="primary" icon={<PlusOutlined />} onClick={() => showModal()}>
+                                Thêm mới
+                            </Button>
+                        )}
                     </>
                 }
             />

@@ -25,6 +25,8 @@ import { getAllUsers, lockUser, unlockUser, softDeleteUser } from '../../api/adm
 import type { AdminUser } from '../../types/admin';
 import { useDebounce } from '../../hooks/useDebounce';
 import { TableSkeleton } from '../../components/LoadingSkeleton';
+import { UserEditModal } from '../../components/admin/UserEditModal'; // <<<< 1. IMPORT MODAL MỚI
+
 
 const { Title, Text } = Typography;
 
@@ -36,6 +38,14 @@ const UserManagementPage: React.FC = () => {
     });
     const [searchTerm, setSearchTerm] = useState('');
     const debouncedSearchTerm = useDebounce(searchTerm, 500);
+
+
+
+    // <<<< 2. THÊM STATE ĐỂ QUẢN LÝ MODAL >>>>
+    const [isModalVisible, setIsModalVisible] = useState(false);
+    const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
+
+
 
     // Fetch users data
     const { data, isLoading, isFetching } = useQuery({
@@ -74,6 +84,12 @@ const UserManagementPage: React.FC = () => {
             current: newPagination.current || 1,
             pageSize: newPagination.pageSize || 10,
         });
+    };
+
+
+    const showEditModal = (user: AdminUser) => {
+        setSelectedUser(user);
+        setIsModalVisible(true);
     };
 
     // Table columns configuration
@@ -146,8 +162,9 @@ const UserManagementPage: React.FC = () => {
                                 </Tooltip>
                             )}
 
-                            <Tooltip title="Chỉnh sửa (sắp có)">
-                                <Button icon={<EditOutlined />} disabled />
+                            {/* <<<< 4. KÍCH HOẠT NÚT CHỈNH SỬA >>>> */}
+                            <Tooltip title="Chỉnh sửa">
+                                <Button icon={<EditOutlined />} onClick={() => showEditModal(record)} />
                             </Tooltip>
 
                             <Popconfirm
@@ -156,11 +173,7 @@ const UserManagementPage: React.FC = () => {
                                 onConfirm={() => deleteMutation.mutate(record.id)}
                             >
                                 <Tooltip title="Xóa mềm">
-                                    <Button
-                                        icon={<DeleteOutlined />}
-                                        danger
-                                        type="dashed"
-                                    />
+                                    <Button icon={<DeleteOutlined />} danger type="dashed" />
                                 </Tooltip>
                             </Popconfirm>
                         </>
@@ -227,6 +240,13 @@ const UserManagementPage: React.FC = () => {
                     }}
                     onChange={handleTableChange}
                     scroll={{ x: 800 }}
+                />
+
+                {/* <<<< 5. THÊM MODAL VÀO CUỐI COMPONENT >>>> */}
+                <UserEditModal
+                    user={selectedUser}
+                    visible={isModalVisible}
+                    onClose={() => setIsModalVisible(false)}
                 />
             </Space>
         </div>
