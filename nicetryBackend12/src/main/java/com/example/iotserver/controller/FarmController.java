@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import com.example.iotserver.dto.response.ApiResponse;
 
 import java.util.List;
 
@@ -86,16 +87,10 @@ public class FarmController {
      */
     @GetMapping
     @Operation(summary = "Lấy danh sách tất cả nông trại người dùng có quyền truy cập")
-    public ResponseEntity<List<FarmDTO>> getUserFarms(Authentication authentication) {
+    public ResponseEntity<ApiResponse<List<FarmDTO>>> getUserFarms(Authentication authentication) {
         Long userId = getUserIdFromAuth(authentication);
-
-        // <<<< ĐÂY LÀ THAY ĐỔI QUAN TRỌNG NHẤT >>>>
-        // Thay vì gọi getUserFarms (chỉ lấy farm của owner)
-        // List<FarmDTO> farms = farmService.getUserFarms(userId);
-        // Chúng ta sẽ gọi getFarmsWithAccess (lấy cả farm được chia sẻ)
         List<FarmDTO> farms = farmService.getFarmsWithAccess(userId);
-
-        return ResponseEntity.ok(farms);
+        return ResponseEntity.ok(ApiResponse.success(farms));
     }
 
     /**
