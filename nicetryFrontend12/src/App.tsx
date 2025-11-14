@@ -26,6 +26,9 @@ const PlantHealthPage = lazy(() => import('./pages/PlantHealthPage'));
 const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const SystemSettingsPage = lazy(() => import('./pages/admin/SystemSettingsPage')); // <<<< THÊM IMPORT
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage')); // VVVV--- THÊM IMPORT NÀY ---VVVV
+
+
 
 const LoadingFallback = () => (
   <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
@@ -88,6 +91,9 @@ function App() {
           <Route path="/ai" element={<PrivateRoute><AppLayout><AIPredictionPage /></AppLayout></PrivateRoute>} />
           <Route path="/profile" element={<PrivateRoute><AppLayout><ProfilePage /></AppLayout></PrivateRoute>} />
           <Route path="/change-password" element={<PrivateRoute><AppLayout><ChangePasswordPage /></AppLayout></PrivateRoute>} />
+          {/* VVVV--- THÊM ROUTE MỚI CHO TRANG NOTIFICATIONS ---VVVV */}
+          <Route path="/notifications" element={<PrivateRoute><AppLayout><NotificationsPage /></AppLayout></PrivateRoute>} />
+          {/* ^^^^---------------------------------------------^^^^ */}
           <Route path="/plant-health" element={<PrivateRoute><AppLayout><PlantHealthPage /></AppLayout></PrivateRoute>} />
           <Route path="/settings" element={<PrivateRoute><AppLayout><SettingsPage /></AppLayout></PrivateRoute>} />
           <Route path="/admin/dashboard" element={<PrivateRoute><AppLayout><AdminDashboardPage /></AppLayout></PrivateRoute>} />

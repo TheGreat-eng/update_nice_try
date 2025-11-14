@@ -12,7 +12,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import com.example.iotserver.entity.Notification; // THÊM IMPORT NÀY
+import com.example.iotserver.entity.User; // THÊM IMPORT NÀY
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.*;
@@ -37,21 +38,6 @@ public class PlantHealthService {
     private final NotificationService notificationService; // <<<< THAY BẰNG DÒNG NÀY
     private final FarmRepository farmRepository; // <<<< 2. INJECT FARMREPOSITORY
     private final SettingService settingService; // <<<< THÊM VÀO
-
-    // // Các ngưỡng cảnh báo
-    // private static final double FUNGUS_HUMIDITY_THRESHOLD = 85.0;
-    // private static final double FUNGUS_TEMP_MIN = 20.0;
-    // private static final double FUNGUS_TEMP_MAX = 28.0;
-
-    // private static final double HEAT_STRESS_THRESHOLD = 38.0;
-    // private static final double DROUGHT_THRESHOLD = 30.0;
-    // private static final double COLD_THRESHOLD = 12.0;
-
-    // private static final double MOISTURE_CHANGE_THRESHOLD = 30.0;
-    // private static final double LIGHT_THRESHOLD = 1000.0;
-
-    // private static final double PH_MIN = 5.0;
-    // private static final double PH_MAX = 7.5;
 
     /**
      * Phân tích sức khỏe tổng thể của nông trại
@@ -79,10 +65,19 @@ public class PlantHealthService {
             log.info("✅ Đã tạo {} cảnh báo mới", newAlerts.size());
         }
 
-        // <<<< 3. GỌI HÀM GỬI EMAIL >>>>
-        Farm farm = farmRepository.findById(farmId)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy Farm để gửi thông báo sức khỏe."));
-        sendEmailForNewHealthAlerts(farm, newAlerts);
+        // VVVV--- SỬA LẠI ĐOẠN GỌI HÀM GỬI THÔNG BÁO ---VVVV
+        if (!newAlerts.isEmpty()) {
+            alertRepository.saveAll(newAlerts);
+            log.info("✅ Đã tạo {} cảnh báo mới", newAlerts.size());
+
+            // Lấy entity Farm để có thông tin Owner
+            Farm farm = farmRepository.findById(farmId)
+                    .orElseThrow(() -> new RuntimeException("Không tìm thấy Farm để gửi thông báo sức khỏe."));
+
+            // Gọi hàm gửi thông báo
+            sendNotificationsForNewHealthAlerts(farm, newAlerts);
+        }
+        // ^^^^--------------------------------------------^^^^
 
         // Lấy lại danh sách đầy đủ sau khi đã thêm mới (nếu có)
         List<PlantHealthAlert> allActiveAlerts = alertRepository
@@ -91,6 +86,43 @@ public class PlantHealthService {
         Integer healthScore = calculateHealthScore(allActiveAlerts);
         return buildHealthReport(healthScore, allActiveAlerts, latestData);
     }
+
+    // VVVV--- THAY THẾ TOÀN BỘ PHƯƠNG THỨC NÀY ---VVVV
+    /**
+     * Gửi thông báo cho từng cảnh báo sức khỏe mới được tạo.
+     * 
+     * @param farm      Nông trại nơi có cảnh báo.
+     * @param newAlerts Danh sách các cảnh báo mới.
+     */
+    private void sendNotificationsForNewHealthAlerts(Farm farm, List<PlantHealthAlert> newAlerts) {
+        User owner = farm.getOwner();
+        if (owner == null) {
+            log.error("Không thể gửi thông báo sức khỏe cho farm {} vì không có chủ sở hữu.", farm.getId());
+            return;
+        }
+
+        for (PlantHealthAlert alert : newAlerts) {
+            // Chỉ gửi thông báo cho các cảnh báo từ mức độ MEDIUM trở lên
+            if (alert.getSeverity() == Severity.LOW) {
+                continue;
+            }
+
+            String title = String.format("[%s] %s",
+                    alert.getSeverity().getDisplayName(),
+                    alert.getAlertType().getDisplayName());
+
+            String message = alert.getDescription();
+            String link = "/plant-health"; // Link đến trang Sức khỏe cây trồng
+
+            notificationService.createAndSendNotification(
+                    owner,
+                    title,
+                    message,
+                    Notification.NotificationType.PLANT_HEALTH_ALERT,
+                    link);
+        }
+    }
+    // ^^^^---------------------------------------^^^^
 
     /**
      * Kiểm tra tất cả 7 quy tắc
@@ -492,25 +524,15 @@ public class PlantHealthService {
         log.info("✅ Đã đánh dấu cảnh báo {} là đã xử lý", alertId);
     }
 
-    /**
-     * Xóa cảnh báo cũ đã xử lý (chạy định kỳ)
-     */
     @Transactional
     public void cleanupOldAlerts(int daysToKeep) {
+        // Tính toán mốc thời gian cutoff
         LocalDateTime cutoffDate = LocalDateTime.now().minusDays(daysToKeep);
+
+        // Gọi phương thức từ repository để thực hiện việc xóa
         alertRepository.deleteByResolvedTrueAndResolvedAtBefore(cutoffDate);
-        log.info("🧹 Đã dọn dẹp các cảnh báo cũ trước ngày {}", cutoffDate);
-    }
 
-    // <<<< VIẾT LẠI HOÀN TOÀN PHƯƠNG THỨC NÀY >>>>
-    private void sendEmailForNewHealthAlerts(Farm farm, List<PlantHealthAlert> newAlerts) {
-        if (newAlerts.isEmpty())
-            return;
-
-        for (PlantHealthAlert alert : newAlerts) {
-            // Giao hết việc cho NotificationService, nó sẽ tự quyết định có gửi hay không
-            notificationService.notifyPlantHealthAlert(farm, alert);
-        }
+        log.info("🧹 Đã dọn dẹp các cảnh báo sức khỏe đã xử lý và cũ hơn ngày {}", cutoffDate);
     }
 
 }

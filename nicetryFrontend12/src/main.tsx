@@ -1,13 +1,24 @@
-import React from 'react'
-import ReactDOM from 'react-dom/client'
-import { ConfigProvider, theme as antdTheme, App as AntdApp } from 'antd'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import App from './App.tsx'
-import { FarmProvider } from './context/FarmContext'
-import { ThemeProvider, useTheme } from './context/ThemeContext' // ✅ THÊM
-import ErrorBoundary from './components/ErrorBoundary'
-import './index.css'; // ✅ THÊM DÒNG NÀY
-// Tạo một QueryClient với các tùy chọn mặc định
+// src/main.tsx
+
+// VVVV--- 1. IMPORT CÁC FILE CSS CỦA THƯ VIỆN LÊN TRÊN CÙNG ---VVVV
+import 'antd/dist/reset.css';
+
+// VVVV--- 2. IMPORT CÁC THƯ VIỆN REACT VÀ CÁC THƯ VIỆN KHÁC ---VVVV
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import { ConfigProvider, theme as antdTheme, App as AntdApp } from 'antd';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+// VVVV--- 3. IMPORT CÁC COMPONENT VÀ CONTEXT CỦA BẠN ---VVVV
+import App from './App.tsx';
+import { FarmProvider } from './context/FarmContext';
+import { ThemeProvider, useTheme } from './context/ThemeContext';
+import ErrorBoundary from './components/ErrorBoundary';
+
+// VVVV--- 4. CUỐI CÙNG, IMPORT FILE CSS TÙY CHỈNH CỦA BẠN ---VVVV
+import './index.css';
+
+// ====================================================================
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -16,9 +27,8 @@ const queryClient = new QueryClient({
       retry: 1,
     },
   },
-})
+});
 
-// ✅ Component wrapper để sử dụng useTheme
 function AppWithTheme() {
   const { isDark } = useTheme();
 
@@ -29,7 +39,7 @@ function AppWithTheme() {
     colorError: '#ef4444',
     colorInfo: '#3b82f6',
     colorTextBase: '#1f2937',
-    colorBgLayout: '#f7f8fc', // Màu nền layout
+    colorBgLayout: '#f7f8fc',
     borderRadius: 8,
     fontFamily: "'Inter', sans-serif",
   };
@@ -41,8 +51,8 @@ function AppWithTheme() {
     colorError: '#ef4444',
     colorInfo: '#3b82f6',
     colorTextBase: '#e5e7eb',
-    colorBgLayout: '#141414', // Màu nền layout tối
-    colorBgContainer: '#1d1d1d', // Màu nền card, modal
+    colorBgLayout: '#141414',
+    colorBgContainer: '#1d1d1d',
     colorBorder: '#303030',
     borderRadius: 8,
     fontFamily: "'Inter', sans-serif",
@@ -54,13 +64,12 @@ function AppWithTheme() {
         theme={{
           algorithm: isDark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
           token: isDark ? darkTheme : lightTheme,
-          components: { // Ghi đè style cho từng component
+          components: {
             Card: {
               headerBg: 'transparent',
-              paddingLG: 20, // Tăng padding cho card
+              paddingLG: 20,
             },
             Button: {
-              // Làm cho button primary nổi bật hơn
               primaryShadow: '0 2px 0 rgba(102, 126, 234, 0.1)',
             },
           },
@@ -84,4 +93,4 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <AppWithTheme />
     </ThemeProvider>
   </React.StrictMode>,
-)
+);

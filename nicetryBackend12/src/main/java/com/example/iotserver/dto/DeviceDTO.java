@@ -33,6 +33,9 @@ public class DeviceDTO implements Serializable {
     private String farmName;
     private String farmLocation;
 
+    private Long zoneId;
+    private String zoneName;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime lastSeen;
 

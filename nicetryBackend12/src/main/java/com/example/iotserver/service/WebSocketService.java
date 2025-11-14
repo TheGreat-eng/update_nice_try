@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
+import com.example.iotserver.dto.NotificationDTO; // THÊM IMPORT
 
 import java.util.Map;
 
@@ -60,4 +61,19 @@ public class WebSocketService {
                 "message", message,
                 "timestamp", System.currentTimeMillis()));
     }
+
+    // VVVV--- THÊM PHƯƠNG THỨC NÀY ---VVVV
+    /**
+     * Gửi thông báo tới một user cụ thể qua WebSocket.
+     * 
+     * @param userId       ID của người dùng nhận.
+     * @param notification DTO của thông báo.
+     */
+    public void sendNotificationToUser(Long userId, NotificationDTO notification) {
+        String destination = "/topic/user/" + userId + "/notifications";
+        messagingTemplate.convertAndSend(destination, notification);
+        log.info("Sent WebSocket notification to user {}: '{}'", userId, notification.getTitle());
+    }
+    // ^^^^-----------------------------^^^^
+
 }

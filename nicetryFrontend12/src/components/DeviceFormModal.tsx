@@ -1,14 +1,24 @@
 // src/components/DeviceFormModal.tsx
 import React, { useEffect } from 'react';
 import { Modal, Form, Input, Select, Button } from 'antd';
+import { useQuery } from '@tanstack/react-query'; // DÙNG useQuery
+
+// API Services và Types
 import type { DeviceFormData } from '../api/deviceService';
-import { DEVICE_TYPES } from '../constants/device'; // ✅ THÊM
+import { getZonesByFarm } from '../api/zoneService';
+import type { Zone } from '../types/zone';
+
+// Constants
+import { DEVICE_TYPES } from '../constants/device';
+
+// Context
+import { useFarm } from '../context/FarmContext';
 
 interface Props {
     visible: boolean;
     onClose: () => void;
     onSubmit: (values: DeviceFormData) => void;
-    initialData?: DeviceFormData | null;
+    initialData?: Partial<DeviceFormData> | null;
     loading: boolean;
 }
 
@@ -16,12 +26,28 @@ const { Option } = Select;
 
 const DeviceFormModal: React.FC<Props> = ({ visible, onClose, onSubmit, initialData, loading }) => {
     const [form] = Form.useForm();
+    const { farmId } = useFarm();
 
+    // SỬ DỤNG useQuery ĐỂ FETCH VÀ CACHE DANH SÁCH ZONES
+    const { data: zones, isLoading: isLoadingZones } = useQuery({
+        queryKey: ['farmZones', farmId], // Sử dụng queryKey nhất quán
+        queryFn: () => {
+            if (!farmId) {
+                return Promise.resolve([]); // Trả về mảng rỗng nếu không có farmId
+            }
+            return getZonesByFarm(farmId);
+        },
+        enabled: visible, // Chỉ fetch khi modal được mở
+    });
+
+    // useEffect này chỉ dùng để điền dữ liệu vào form khi modal mở hoặc khi initialData thay đổi
     useEffect(() => {
         if (visible) {
             if (initialData) {
+                // Điền dữ liệu cho form khi ở chế độ "Sửa"
                 form.setFieldsValue(initialData);
             } else {
+                // Reset form khi ở chế độ "Thêm mới"
                 form.resetFields();
             }
         }
@@ -30,6 +56,7 @@ const DeviceFormModal: React.FC<Props> = ({ visible, onClose, onSubmit, initialD
     const handleOk = () => {
         form.validateFields()
             .then(values => {
+                console.log('Submitting values:', values);
                 onSubmit(values);
             })
             .catch(info => {
@@ -39,6 +66,7 @@ const DeviceFormModal: React.FC<Props> = ({ visible, onClose, onSubmit, initialD
 
     return (
         <Modal
+            destroyOnClose // GIẢI QUYẾT TRIỆT ĐỂ LỖI VALIDATION
             title={initialData ? "Sửa thông tin thiết bị" : "Thêm thiết bị mới"}
             open={visible}
             onCancel={onClose}
@@ -56,21 +84,14 @@ const DeviceFormModal: React.FC<Props> = ({ visible, onClose, onSubmit, initialD
                     label="Device ID (Mã định danh)"
                     rules={[
                         { required: true, message: 'Vui lòng nhập Device ID!' },
-                        {
-                            pattern: /^[A-Z0-9-]+$/,
-                            message: 'Device ID chỉ được chứa chữ in hoa, số và dấu gạch ngang!'
-                        },
-                        {
-                            min: 3,
-                            message: 'Device ID phải có ít nhất 3 ký tự!'
-                        }
+                        { pattern: /^[A-Z0-9-]+$/, message: 'Device ID chỉ được chứa chữ in hoa, số và dấu gạch ngang!' },
+                        { min: 3, message: 'Device ID phải có ít nhất 3 ký tự!' }
                     ]}
                 >
                     <Input disabled={!!initialData} placeholder="VD: DHT22-001" />
                 </Form.Item>
                 <Form.Item name="type" label="Loại thiết bị" rules={[{ required: true, message: 'Vui lòng chọn loại thiết bị!' }]}>
                     <Select placeholder="Chọn loại">
-                        {/* ✅ SỬA: Dùng constants */}
                         {Object.values(DEVICE_TYPES).map(type => (
                             <Option key={type.value} value={type.value}>
                                 {type.label}
@@ -78,6 +99,22 @@ const DeviceFormModal: React.FC<Props> = ({ visible, onClose, onSubmit, initialD
                         ))}
                     </Select>
                 </Form.Item>
+
+                {/* --- Form Item cho Zone --- */}
+                <Form.Item name="zoneId" label="Vùng (Tùy chọn)">
+                    <Select
+                        placeholder="Chọn vùng cho thiết bị"
+                        loading={isLoadingZones}
+                        allowClear
+                    >
+                        {(zones || []).map((zone: Zone) => (
+                            <Option key={zone.id} value={zone.id}>
+                                {zone.name}
+                            </Option>
+                        ))}
+                    </Select>
+                </Form.Item>
+
                 <Form.Item name="description" label="Mô tả">
                     <Input.TextArea rows={2} />
                 </Form.Item>
@@ -87,18 +124,3 @@ const DeviceFormModal: React.FC<Props> = ({ visible, onClose, onSubmit, initialD
 };
 
 export default DeviceFormModal;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

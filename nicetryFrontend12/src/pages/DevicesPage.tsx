@@ -322,6 +322,17 @@ const DevicesPage: React.FC = () => {
                 </Space>
             ),
         },
+
+        // VVVV--- THÊM CỘT NÀY VÀO SAU CỘT "Trạng thái" ---VVVV
+        {
+            title: 'Vùng',
+            dataIndex: 'zoneName',
+            key: 'zoneName',
+            width: 150,
+            render: (zoneName: string | undefined) =>
+                zoneName ? <Tag color="purple">{zoneName}</Tag> : <Text type="secondary">-</Text>,
+        },
+        // ^^^^-------------------------------------------------^^^^
         {
             title: 'Lần hoạt động cuối',
             dataIndex: 'lastSeen',
@@ -468,11 +479,15 @@ const DevicesPage: React.FC = () => {
                     visible={isModalVisible}
                     onClose={handleCancel}
                     onSubmit={handleSubmit}
+                    // VVVV--- THAY THẾ TOÀN BỘ ĐỐI TƯỢNG initialData BẰNG ĐOẠN NÀY ---VVVV
                     initialData={editingDevice ? {
                         name: editingDevice.name,
                         deviceId: editingDevice.deviceId,
                         type: editingDevice.type,
+                        description: editingDevice.description,
+                        zoneId: editingDevice.zoneId, // QUAN TRỌNG: Thêm zoneId
                     } : null}
+                    // ^^^^---------------------------------------------------------^^^^
                     loading={formLoading}
                 />
             )}

@@ -8,13 +8,15 @@ import com.example.iotserver.entity.Device;
 import com.example.iotserver.entity.Farm;
 import com.example.iotserver.repository.DeviceRepository;
 import com.example.iotserver.repository.FarmRepository;
+import com.example.iotserver.repository.ZoneRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import com.example.iotserver.entity.*;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.example.iotserver.service.WebSocketService; // Thêm import này
 
 import java.time.LocalDateTime;
 import java.util.Arrays;
@@ -28,7 +30,9 @@ import org.springframework.cache.annotation.CacheEvict; // <-- THÊM IMPORT
 import java.time.temporal.ChronoUnit; // <<<< 1. THÊM IMPORT
 
 import com.example.iotserver.entity.User; // <<<< THÊM IMPORT
+import com.example.iotserver.entity.Zone;
 import com.example.iotserver.enums.FarmRole; // <<<< THÊM IMPORT
+import com.example.iotserver.exception.ResourceNotFoundException;
 
 @Service
 @Slf4j
@@ -41,6 +45,10 @@ public class DeviceService {
     private final WebSocketService webSocketService; // Thêm dependency này
     // private final EmailService emailService; // <<<< 2. INJECT EMAILSERVICE
     private final NotificationService notificationService; // <<<< THAY BẰNG DÒNG NÀY
+
+    // VVVV--- THÊM DÒNG NÀY ---VVVV
+    private final ZoneRepository zoneRepository;
+    // ^^^^-----------------------^^^^
 
     private final AuthenticationService authenticationService; // <<<< THÊM
     private final FarmService farmService; // <<<< THÊM
@@ -78,6 +86,17 @@ public class DeviceService {
         device.setFarm(farm);
         device.setMetadata(dto.getMetadata());
 
+        // VVVV--- THÊM LOGIC GÁN ZONE ---VVVV
+        if (dto.getZoneId() != null) {
+            Zone zone = zoneRepository.findById(dto.getZoneId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Zone", "id", dto.getZoneId()));
+            // Kiểm tra zone này có thuộc farm đang xét không
+            if (!zone.getFarm().getId().equals(device.getFarm().getId())) {
+                throw new IllegalArgumentException("Zone không thuộc về Farm này.");
+            }
+            device.setZone(zone);
+        }
+
         Device saved = deviceRepository.save(device);
         log.info("Created device: {} for farm: {}", saved.getDeviceId(), farmId);
 
@@ -102,6 +121,17 @@ public class DeviceService {
             device.setMetadata(dto.getMetadata());
         if (dto.getStatus() != null) {
             device.setStatus(DeviceStatus.valueOf(dto.getStatus()));
+        }
+
+        // VVVV--- THÊM LOGIC GÁN ZONE ---VVVV
+        if (dto.getZoneId() != null) {
+            Zone zone = zoneRepository.findById(dto.getZoneId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Zone", "id", dto.getZoneId()));
+            // Kiểm tra zone này có thuộc farm đang xét không
+            if (!zone.getFarm().getId().equals(device.getFarm().getId())) {
+                throw new IllegalArgumentException("Zone không thuộc về Farm này.");
+            }
+            device.setZone(zone);
         }
 
         Device updated = deviceRepository.save(device);
@@ -244,10 +274,20 @@ public class DeviceService {
                 // ===> THÊM DÒNG NÀY ĐỂ GỬI WEBSOCKET <===
                 webSocketService.sendDeviceStatus(device.getFarm().getId(), device.getDeviceId(), "OFFLINE");
             }
-            // <<<< 3. GỌI HÀM GỬI EMAIL >>>>
-            if (ChronoUnit.MINUTES.between(device.getLastSeen(), LocalDateTime.now()) >= 60) {
-                notificationService.notifyDeviceOffline(device);
-            }
+            // VVVV--- THAY THẾ VIỆC GỌI EMAILSERVICE BẰNG NOTIFICATIONSERVICE ---VVVV
+            User owner = device.getFarm().getOwner();
+            String title = String.format("Thiết bị '%s' đã offline", device.getName());
+            String message = String.format("Thiết bị '%s' (ID: %s) tại nông trại '%s' đã mất kết nối.",
+                    device.getName(), device.getDeviceId(), device.getFarm().getName());
+            String link = "/devices"; // Hoặc link chi tiết tới thiết bị
+
+            notificationService.createAndSendNotification(
+                    owner,
+                    title,
+                    message,
+                    Notification.NotificationType.DEVICE_STATUS,
+                    link);
+            // ^^^^-------------------------------------------------------------------^^^^
         }
     }
 
@@ -295,23 +335,29 @@ public class DeviceService {
     }
 
     private DeviceDTO mapToDTO(Device device) {
-        DeviceDTO dto = DeviceDTO.builder()
+
+        DeviceDTO.DeviceDTOBuilder builder = DeviceDTO.builder()
                 .id(device.getId())
                 .deviceId(device.getDeviceId())
                 .name(device.getName())
                 .description(device.getDescription())
                 .type(device.getType().name())
                 .status(device.getStatus().name())
-                .currentState(device.getCurrentState()) // <-- THÊM DÒNG NÀY
                 .farmId(device.getFarm().getId())
                 .farmName(device.getFarm().getName())
                 .farmLocation(device.getFarm().getLocation())
                 .lastSeen(device.getLastSeen())
                 .metadata(device.getMetadata())
                 .createdAt(device.getCreatedAt())
-                .updatedAt(device.getUpdatedAt())
-                .build();
+                .updatedAt(device.getUpdatedAt());
 
+        if (device.getZone() != null) {
+            builder.zoneId(device.getZone().getId());
+            builder.zoneName(device.getZone().getName());
+        }
+        // ^^^^-----------------------^^^^
+
+        DeviceDTO dto = builder.build();
         dto.calculateDerivedFields();
         return dto;
     }

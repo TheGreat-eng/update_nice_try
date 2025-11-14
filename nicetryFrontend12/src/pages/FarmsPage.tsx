@@ -6,7 +6,8 @@ import {
 } from 'antd';
 import {
     PlusOutlined, EditOutlined, DeleteOutlined, CheckCircleOutlined,
-    TeamOutlined, InfoCircleOutlined
+    TeamOutlined, InfoCircleOutlined,
+    AppstoreOutlined
 } from '@ant-design/icons';
 import { MapPin } from 'lucide-react';
 
@@ -21,6 +22,8 @@ import { useFarm } from '../context/FarmContext';
 import { useApiCall } from '../hooks/useApiCall';
 import { getUserFromStorage } from '../utils/auth';
 import { SUCCESS_MESSAGES } from '../constants/messages';
+import { FarmZones } from '../components/FarmZones'; // VVVV--- THÊM IMPORT NÀY ---VVVV
+
 
 const { Title, Text, Paragraph } = Typography;
 const { TabPane } = Tabs;
@@ -223,6 +226,21 @@ const FarmsPage: React.FC = () => {
                                 <Descriptions.Item label="Ngày tạo">{selectedFarmDetail.createdAt ? new Date(selectedFarmDetail.createdAt).toLocaleString('vi-VN') : 'N/A'}</Descriptions.Item>
                             </Descriptions>
                         </TabPane>
+
+
+                        {/* VVVV--- THÊM TAB MỚI NÀY ---VVVV */}
+                        <TabPane tab={<span><AppstoreOutlined />Quản lý Vùng</span>} key="3">
+                            <FarmZones
+                                farmId={selectedFarmDetail.id}
+                                canManage={currentUser?.userId === selectedFarmDetail.ownerId || selectedFarmDetail.currentUserRole === 'OPERATOR'}
+                            />
+                        </TabPane>
+                        {/* ^^^^----------------------------^^^^ */}
+
+
+
+
+
                         <TabPane tab={<span><TeamOutlined />Quản lý thành viên</span>} key="2">
                             <FarmMembers
                                 farmId={selectedFarmDetail.id}

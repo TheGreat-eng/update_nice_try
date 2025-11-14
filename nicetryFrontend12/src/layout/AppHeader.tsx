@@ -9,6 +9,8 @@ import { getFarms } from '../api/farmService';
 import { clearAuthData, getUserFromStorage } from '../utils/auth';
 import type { Farm } from '../types/farm';
 import GlobalSearch from '../components/GlobalSearch';
+import NotificationBell from '../components/NotificationBell'; // VVVV--- THÊM IMPORT NÀY ---VVVV
+
 
 const { Header } = Layout;
 const { Option } = Select;
@@ -123,6 +125,11 @@ const AppHeader: React.FC = () => {
                         ))}
                     </Select>
                 </Space>
+
+
+                {/* VVVV--- THÊM DÒNG NÀY VÀO TRƯỚC NÚT DARK/LIGHT MODE ---VVVV */}
+                <NotificationBell />
+                {/* ^^^^-----------------------------------------------------^^^^ */}
 
                 <Tooltip title={isDark ? 'Chế độ sáng' : 'Chế độ tối'}>
                     <Button

@@ -10,13 +10,18 @@ import com.example.iotserver.repository.DeviceRepository;
 import com.example.iotserver.repository.FarmRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.integration.annotation.ServiceActivator;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageHeaders;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.example.iotserver.enums.DeviceStatus;
+import com.example.iotserver.entity.User;
+import com.example.iotserver.entity.Notification; // <<<< Thêm vào
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
@@ -35,13 +40,10 @@ public class MqttMessageHandler {
     // private final EmailService emailService; // <<<< Thêm vào
     // private final FarmRepository farmRepository; // <<<< Thêm vào
     private final NotificationService notificationService; // <<<< THÊM DÒNG NÀY
+    private final SettingService settingService; // Service để lấy ngưỡng cài đặt
+    private final StringRedisTemplate redisTemplate; // Redis để quản lý cooldown
 
-    // <<<< THÊM CÁC HẰNG SỐ NÀY VÀO >>>>
-    // private static final double HIGH_TEMP_THRESHOLD = 38.0;
-    // private static final double LOW_SOIL_MOISTURE_THRESHOLD = 20.0;
-    // private static final double HIGH_HUMIDITY_THRESHOLD = 90.0;
-    // private static final int SENSOR_NOTIFICATION_COOLDOWN_HOURS = 4; // Gửi lại
-    // sau 4 giờ
+    private static final int SENSOR_NOTIFICATION_COOLDOWN_HOURS = 4;
 
     @ServiceActivator(inputChannel = "mqttInputChannel")
     public void handleMessage(Message<?> message) {
@@ -67,49 +69,35 @@ public class MqttMessageHandler {
     private void handleSensorData(String topic, String payload) {
         try {
             String deviceId = topic.split("/")[1];
-            Map<String, Object> data = objectMapper.readValue(payload, Map.class);
-            SensorDataDTO sensorData = SensorDataDTO.fromMqttPayload(deviceId, data);
-
-            // VVVV--- ĐÂY LÀ PHẦN SỬA LỖI QUAN TRỌNG NHẤT ---VVVV
-
-            // 1. Tìm thiết bị trong database để lấy thông tin Farm
             Device device = deviceRepository.findByDeviceIdWithFarmAndOwner(deviceId)
-                    .orElse(null); // Sử dụng phương thức đã có sẵn để lấy cả farm
+                    .orElse(null);
 
             if (device == null) {
                 log.warn("Nhận được dữ liệu từ thiết bị lạ chưa được đăng ký: {}", deviceId);
-                return; // Dừng xử lý nếu không biết thiết bị này
+                return;
             }
 
-            // 2. Lấy farmId từ đối tượng Device và gán vào DTO
+            Map<String, Object> data = objectMapper.readValue(payload, Map.class);
+            SensorDataDTO sensorData = SensorDataDTO.fromMqttPayload(deviceId, data);
+
             Long farmId = device.getFarm().getId();
             sensorData.setFarmId(farmId);
 
-            log.info(">>>> [MQTT PROCESS] Đã xác định FarmID: {} cho DeviceID: {}", farmId, deviceId);
-
-            // 3. Bây giờ mới lưu dữ liệu vào InfluxDB (với farmId chính xác)
             sensorDataService.saveSensorData(sensorData);
 
-            // 4. Cập nhật trạng thái và lastSeen cho device trong MySQL
             device.setLastSeen(LocalDateTime.now());
-            if (device.getStatus() != DeviceStatus.ONLINE) { // Chỉ cập nhật và gửi thông báo nếu trạng thái thay đổi
+            if (device.getStatus() != DeviceStatus.ONLINE) {
                 device.setStatus(DeviceStatus.ONLINE);
-                deviceRepository.save(device);
-                // Gửi thông báo WebSocket về trạng thái ONLINE
                 webSocketService.sendDeviceStatus(farmId, deviceId, "ONLINE");
-            } else {
-                deviceRepository.save(device); // Vẫn save để cập nhật lastSeen
             }
+            deviceRepository.save(device);
 
-            // 5. Gửi dữ liệu cảm biến qua WebSocket
             webSocketService.sendSensorData(farmId, sensorData);
-
-            // 6. Kích hoạt phân tích sức khỏe (nếu cần)
             plantHealthService.analyzeHealth(farmId);
 
-            // <<<< SỬA BƯỚC 7 >>>>
-            // 7. Kích hoạt kiểm tra cảnh báo tức thời
-            notificationService.notifyForSensorAnomalies(device.getFarm(), device, sensorData);
+            // VVVV--- GỌI LOGIC KIỂM TRA CẢNH BÁO TỨC THỜI ---VVVV
+            checkForSensorAnomaliesAndNotify(device.getFarm(), device, sensorData);
+            // ^^^^--------------------------------------------^^^^
 
             log.info("Xử lý thành công dữ liệu cảm biến từ thiết bị: {}", deviceId);
 
@@ -169,5 +157,69 @@ public class MqttMessageHandler {
             log.error("Error processing device status: {}", e.getMessage(), e);
         }
     }
+
+    // VVVV--- ĐÂY LÀ PHẦN LOGIC MỚI ĐƯỢC THÊM VÀO ---VVVV
+    /**
+     * Kiểm tra các ngưỡng tức thời từ dữ liệu cảm biến và tạo thông báo nếu cần.
+     */
+    private void checkForSensorAnomaliesAndNotify(Farm farm, Device device, SensorDataDTO data) {
+        User owner = farm.getOwner();
+        if (owner == null)
+            return;
+
+        // 1. Kiểm tra nhiệt độ cao
+        double highTempThreshold = settingService.getDouble("SENSOR_HIGH_TEMP_THRESHOLD", 38.0);
+        if (data.getTemperature() != null && data.getTemperature() > highTempThreshold) {
+            String alertType = "SENSOR_HIGH_TEMP";
+            if (canSendNotification(farm.getId(), alertType, device.getDeviceId())) {
+                String title = String.format("Cảnh Báo: Nhiệt độ cao tại %s", device.getName());
+                String message = String.format(
+                        "Nhiệt độ đo được là %.1f°C, vượt ngưỡng %.1f°C. Hãy kiểm tra hệ thống làm mát.",
+                        data.getTemperature(), highTempThreshold);
+                notificationService.createAndSendNotification(owner, title, message,
+                        Notification.NotificationType.DEVICE_STATUS, "/devices");
+                setNotificationCooldown(farm.getId(), alertType, device.getDeviceId());
+            }
+        }
+
+        // 2. Kiểm tra độ ẩm đất thấp
+        double lowSoilThreshold = settingService.getDouble("SENSOR_LOW_SOIL_MOISTURE_THRESHOLD", 20.0);
+        if (data.getSoilMoisture() != null && data.getSoilMoisture() < lowSoilThreshold) {
+            String alertType = "SENSOR_LOW_SOIL";
+            if (canSendNotification(farm.getId(), alertType, device.getDeviceId())) {
+                String title = String.format("Cảnh Báo: Độ ẩm đất thấp tại %s", device.getName());
+                String message = String.format("Độ ẩm đất chỉ còn %.1f%%, dưới ngưỡng %.1f%%. Cần tưới nước ngay.",
+                        data.getSoilMoisture(), lowSoilThreshold);
+                notificationService.createAndSendNotification(owner, title, message,
+                        Notification.NotificationType.DEVICE_STATUS, "/devices");
+                setNotificationCooldown(farm.getId(), alertType, device.getDeviceId());
+            }
+        }
+
+        // 3. Kiểm tra độ ẩm không khí cao
+        double highHumidityThreshold = settingService.getDouble("SENSOR_HIGH_HUMIDITY_THRESHOLD", 90.0);
+        if (data.getHumidity() != null && data.getHumidity() > highHumidityThreshold) {
+            String alertType = "SENSOR_HIGH_HUMIDITY";
+            if (canSendNotification(farm.getId(), alertType, device.getDeviceId())) {
+                String title = String.format("Cảnh Báo: Độ ẩm cao tại %s", device.getName());
+                String message = String.format("Độ ẩm không khí là %.1f%%, vượt ngưỡng %.1f%%, có nguy cơ nấm bệnh.",
+                        data.getHumidity(), highHumidityThreshold);
+                notificationService.createAndSendNotification(owner, title, message,
+                        Notification.NotificationType.DEVICE_STATUS, "/devices");
+                setNotificationCooldown(farm.getId(), alertType, device.getDeviceId());
+            }
+        }
+    }
+
+    private boolean canSendNotification(Long farmId, String alertType, String deviceId) {
+        String redisKey = "cooldown:notification:" + farmId + ":" + alertType + ":" + deviceId;
+        return !Boolean.TRUE.equals(redisTemplate.hasKey(redisKey));
+    }
+
+    private void setNotificationCooldown(Long farmId, String alertType, String deviceId) {
+        String redisKey = "cooldown:notification:" + farmId + ":" + alertType + ":" + deviceId;
+        redisTemplate.opsForValue().set(redisKey, "sent", Duration.ofHours(SENSOR_NOTIFICATION_COOLDOWN_HOURS));
+    }
+    // ^^^^---------------------------------------------------^^^^
 
 }

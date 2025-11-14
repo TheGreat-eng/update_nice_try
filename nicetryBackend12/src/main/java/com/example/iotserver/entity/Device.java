@@ -10,6 +10,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.ToString;
+import com.fasterxml.jackson.annotation.JsonBackReference; // Thêm import này
 
 import java.time.LocalDateTime;
 
@@ -46,6 +47,11 @@ public class Device {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private DeviceStatus status = DeviceStatus.OFFLINE;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "zone_id") // Cột khóa ngoại sẽ được tạo trong bảng 'devices'
+    @JsonBackReference("zone-devices") // Tránh lặp vô hạn khi serialize
+    private Zone zone;
 
     // Device thuộc về Farm (nếu business yêu cầu)
     @ManyToOne(fetch = FetchType.LAZY)

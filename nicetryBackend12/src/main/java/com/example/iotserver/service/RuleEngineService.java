@@ -2,9 +2,11 @@ package com.example.iotserver.service;
 
 import com.example.iotserver.dto.SensorDataDTO;
 import com.example.iotserver.dto.WeatherDTO;
+import com.example.iotserver.entity.Notification;
 import com.example.iotserver.entity.Rule;
 import com.example.iotserver.entity.RuleCondition;
 import com.example.iotserver.entity.RuleExecutionLog;
+import com.example.iotserver.entity.User;
 import com.example.iotserver.repository.RuleExecutionLogRepository;
 import com.example.iotserver.repository.RuleRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -456,15 +458,23 @@ public class RuleEngineService {
      * Gửi email
      */
     private String sendEmailForRule(Rule rule, Rule.RuleAction action) {
-        String ownerEmail = rule.getFarm().getOwner().getEmail();
-        if (ownerEmail == null || ownerEmail.isEmpty()) {
-            return "Lỗi: Không tìm thấy email của chủ nông trại.";
+        User owner = rule.getFarm().getOwner();
+        if (owner == null) {
+            return "Lỗi: Không tìm thấy chủ nông trại.";
         }
+        String title = "Quy tắc đã kích hoạt: " + rule.getName();
+        String link = "/rules/edit/" + rule.getId();
 
-        // Giao việc cho NotificationService
-        notificationService.notifyForRule(rule, action);
+        // VVVV--- SỬA LẠI ĐỂ GỌI NOTIFICATIONSERVICE ---VVVV
+        notificationService.createAndSendNotification(
+                owner,
+                title,
+                action.getMessage(),
+                Notification.NotificationType.RULE_TRIGGERED,
+                link);
+        // ^^^^-----------------------------------------^^^^
 
-        return "Đã yêu cầu gửi email (từ quy tắc) tới: " + ownerEmail;
+        return "Đã tạo thông báo (từ quy tắc) cho: " + owner.getEmail();
     }
 
     /**

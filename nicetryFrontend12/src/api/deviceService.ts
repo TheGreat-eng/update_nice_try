@@ -8,6 +8,7 @@ export interface DeviceFormData {
     deviceId: string;
     type: string;
     description?: string;
+    zoneId?: number | null; // THÊM DÒNG NÀY
 }
 
 export const getDevicesByFarm = (farmId: number) => {

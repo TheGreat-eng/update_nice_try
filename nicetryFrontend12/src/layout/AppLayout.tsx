@@ -13,6 +13,7 @@ import { getUserFromStorage } from '../utils/auth';
 import PageBreadcrumb from '../components/PageBreadcrumb';
 import { BellOutlined } from '@ant-design/icons';
 import { useStomp } from '../hooks/useStomp';
+import { useQueryClient } from '@tanstack/react-query'; // THÊM
 
 const { Content, Sider } = Layout;
 
@@ -41,29 +42,52 @@ const AppLayout: React.FC<PropsWithChildren> = ({ children }) => {
 
     const user = getUserFromStorage();
     const isAdmin = user?.roles?.includes('ADMIN');
-    const { stompClient, isConnected } = useStomp(user ? user.userId : null);
+    const queryClient = useQueryClient(); // Lấy queryClient instance
 
+    // VVVV--- SỬA LẠI HOOK useStomp ĐỂ DÙNG user ID ---VVVV
+    const { stompClient, isConnected } = useStomp(user ? user.userId : null, 'user');
+    // ^^^^--------------------------------------------^^^^
+    //const { stompClient, isConnected } = useStomp(user ? user.userId : null);
+
+    // VVVV--- THAY THẾ TOÀN BỘ useEffect cũ BẰNG ĐOẠN NÀY ---VVVV
     useEffect(() => {
         if (isConnected && stompClient && user) {
+            console.log(`Subscribing to user notifications: /topic/user/${user.userId}/notifications`);
+
             const subscription = stompClient.subscribe(
                 `/topic/user/${user.userId}/notifications`,
                 (message) => {
                     try {
                         const notificationData = JSON.parse(message.body);
-                        notification.open({
+
+                        // 1. Hiển thị popup thông báo của AntD
+                        notification.info({
                             message: notificationData.title,
                             description: notificationData.message,
                             icon: <BellOutlined style={{ color: '#108ee9' }} />,
-                            placement: 'bottomRight'
+                            placement: 'bottomRight',
+                            duration: 10, // Hiển thị trong 10 giây
                         });
+
+                        // 2. Báo cho React Query biết rằng dữ liệu về thông báo đã cũ
+                        // Điều này sẽ kích hoạt NotificationBell tự động fetch lại số lượng chưa đọc
+                        queryClient.invalidateQueries({ queryKey: ['notifications', 'unreadCount'] });
+                        // Cũng có thể làm mới cả danh sách nếu dropdown đang mở
+                        queryClient.invalidateQueries({ queryKey: ['notifications', 'latest'] });
+
                     } catch (error) {
                         console.error('Failed to parse notification message:', error);
                     }
                 }
             );
-            return () => subscription.unsubscribe();
+            // Cleanup khi component unmount
+            return () => {
+                console.log('Unsubscribing from user notifications');
+                subscription.unsubscribe();
+            };
         }
-    }, [isConnected, stompClient, user]);
+    }, [isConnected, stompClient, user, queryClient]); // Thêm queryClient vào dependency array
+    // ^^^^---------------------------------------------------------^^^^
 
     const menuItems: MenuItem[] = [
         getItem('Dashboard', '/dashboard', <LayoutDashboard size={16} />),
