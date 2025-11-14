@@ -177,7 +177,8 @@ public class MqttMessageHandler {
                         "Nhiệt độ đo được là %.1f°C, vượt ngưỡng %.1f°C. Hãy kiểm tra hệ thống làm mát.",
                         data.getTemperature(), highTempThreshold);
                 notificationService.createAndSendNotification(owner, title, message,
-                        Notification.NotificationType.DEVICE_STATUS, "/devices");
+                        Notification.NotificationType.DEVICE_STATUS, "/devices",
+                        true);
                 setNotificationCooldown(farm.getId(), alertType, device.getDeviceId());
             }
         }
@@ -191,7 +192,8 @@ public class MqttMessageHandler {
                 String message = String.format("Độ ẩm đất chỉ còn %.1f%%, dưới ngưỡng %.1f%%. Cần tưới nước ngay.",
                         data.getSoilMoisture(), lowSoilThreshold);
                 notificationService.createAndSendNotification(owner, title, message,
-                        Notification.NotificationType.DEVICE_STATUS, "/devices");
+                        Notification.NotificationType.DEVICE_STATUS, "/devices",
+                        true);
                 setNotificationCooldown(farm.getId(), alertType, device.getDeviceId());
             }
         }
@@ -205,7 +207,8 @@ public class MqttMessageHandler {
                 String message = String.format("Độ ẩm không khí là %.1f%%, vượt ngưỡng %.1f%%, có nguy cơ nấm bệnh.",
                         data.getHumidity(), highHumidityThreshold);
                 notificationService.createAndSendNotification(owner, title, message,
-                        Notification.NotificationType.DEVICE_STATUS, "/devices");
+                        Notification.NotificationType.DEVICE_STATUS, "/devices",
+                        true);
                 setNotificationCooldown(farm.getId(), alertType, device.getDeviceId());
             }
         }

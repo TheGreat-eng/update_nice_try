@@ -119,7 +119,9 @@ public class PlantHealthService {
                     title,
                     message,
                     Notification.NotificationType.PLANT_HEALTH_ALERT,
-                    link);
+                    link,
+                    true // Gửi email
+            );
         }
     }
     // ^^^^---------------------------------------^^^^

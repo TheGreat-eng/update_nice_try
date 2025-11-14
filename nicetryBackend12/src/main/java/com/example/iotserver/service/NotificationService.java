@@ -18,13 +18,14 @@ public class NotificationService {
 
     private final NotificationRepository notificationRepository;
     private final WebSocketService webSocketService;
+    private final EmailService emailService; // VVVV--- THÊM DEPENDENCY NÀY ---VVVV
 
     /**
      * Hàm trung tâm để tạo, lưu và đẩy thông báo.
      */
     @Transactional
     public void createAndSendNotification(User user, String title, String message, Notification.NotificationType type,
-            String link) {
+            String link, boolean shouldSendEmail) {
         Notification notification = Notification.builder()
                 .user(user)
                 .title(title)
@@ -38,6 +39,21 @@ public class NotificationService {
 
         // Gửi qua WebSocket tới user cụ thể
         webSocketService.sendNotificationToUser(user.getId(), NotificationDTO.fromEntity(savedNotification));
+
+        // VVVV--- THÊM LOGIC GỬI EMAIL ---VVVV
+        if (shouldSendEmail && user.getEmail() != null) {
+            String emailSubject = "[SmartFarm] " + title;
+            String emailText = "Xin chào " + user.getFullName() + ",\n\n"
+                    + "Bạn có một thông báo mới từ hệ thống SmartFarm:\n\n"
+                    + "Tiêu đề: " + title + "\n"
+                    + "Nội dung: " + message + "\n\n"
+                    + "Vui lòng đăng nhập vào hệ thống để xem chi tiết.\n"
+                    + "Đường dẫn: http://your-frontend-url.com" + (link != null ? link : "") + "\n\n"
+                    + "Trân trọng,\nĐội ngũ SmartFarm.";
+
+            emailService.sendSimpleMessage(user.getEmail(), emailSubject, emailText);
+        }
+
     }
 
     // --- Các hàm để Controller gọi ---

@@ -471,7 +471,9 @@ public class RuleEngineService {
                 title,
                 action.getMessage(),
                 Notification.NotificationType.RULE_TRIGGERED,
-                link);
+                link,
+                false // Không cần gửi email thêm lần nữa
+        );
         // ^^^^-----------------------------------------^^^^
 
         return "Đã tạo thông báo (từ quy tắc) cho: " + owner.getEmail();

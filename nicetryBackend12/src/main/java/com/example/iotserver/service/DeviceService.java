@@ -286,7 +286,9 @@ public class DeviceService {
                     title,
                     message,
                     Notification.NotificationType.DEVICE_STATUS,
-                    link);
+                    link,
+                    true // Gửi email);
+            );
             // ^^^^-------------------------------------------------------------------^^^^
         }
     }
