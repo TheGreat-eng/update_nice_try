@@ -16,6 +16,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.example.iotserver.entity.Device; // THÊM IMPORT
+import com.example.iotserver.repository.DeviceRepository; // THÊM IMPORT
+
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.*;
@@ -37,6 +40,7 @@ public class RuleEngineService {
     private final WeatherService weatherService;
     // private final EmailService emailService;
     private final NotificationService notificationService; // <<<< THÊM DÒNG NÀY
+    private final DeviceRepository deviceRepository; // VVVV--- THÊM DEPENDENCY NÀY ---VVVV
 
     /**
      * Chạy tất cả quy tắc đang kích hoạt
@@ -197,11 +201,12 @@ public class RuleEngineService {
             case SENSOR_VALUE:
                 return evaluateSensorCondition(condition, context, sensorDataCache);
             case TIME_RANGE:
-                return evaluateSensorCondition(condition, context, sensorDataCache);
+                return evaluateTimeCondition(condition, context);
             case DEVICE_STATUS:
-                return evaluateSensorCondition(condition, context, sensorDataCache);
-            case WEATHER: // ✅ THÊM MỚI
-                return evaluateSensorCondition(condition, context, sensorDataCache);
+                // VVVV--- SỬA LẠI LỜI GỌI HÀM NÀY, BỎ sensorDataCache ---VVVV
+                return evaluateDeviceStatusCondition(condition, context);
+            case WEATHER:
+                return evaluateWeatherCondition(condition, context);
             default:
                 log.warn("Loại điều kiện không được hỗ trợ: {}", condition.getType());
                 return false;
@@ -300,8 +305,10 @@ public class RuleEngineService {
     }
 
     /**
-     * Kiểm tra điều kiện về trạng thái thiết bị
+     * Kiểm tra điều kiện về trạng thái thiết bị (ONLINE/OFFLINE).
+     * Đã tối ưu hóa để chỉ truy vấn MySQL.
      */
+    // VVVV--- VIẾT LẠI HOÀN TOÀN HÀM NÀY ---VVVV
     private boolean evaluateDeviceStatusCondition(RuleCondition condition, Map<String, Object> context) {
         try {
             String deviceId = condition.getDeviceId();
@@ -309,18 +316,29 @@ public class RuleEngineService {
                 return false;
             }
 
-            var device = deviceService.getDeviceWithLatestData(deviceId);
-            String status = device.getStatus();
+            Optional<Device> deviceOpt = deviceRepository.findByDeviceId(deviceId);
+            if (deviceOpt.isEmpty()) {
+                log.warn("Không tìm thấy thiết bị với ID '{}' cho điều kiện trạng thái.", deviceId);
+                return false;
+            }
 
-            context.put("device_" + deviceId + "_status", status);
+            String currentStatus = deviceOpt.get().getStatus().name();
+            String expectedStatus = condition.getValue().toUpperCase();
 
-            return status.equalsIgnoreCase(condition.getValue());
+            context.put("device_" + deviceId + "_status", currentStatus);
+            context.put("device_" + deviceId + "_expected_status", expectedStatus);
 
+            boolean result = currentStatus.equals(expectedStatus);
+            log.debug("  Kiểm tra trạng thái thiết bị {}: Hiện tại '{}' == Mong đợi '{}' -> {}", deviceId,
+                    currentStatus, expectedStatus, result);
+
+            return result;
         } catch (Exception e) {
             log.error("Lỗi khi kiểm tra trạng thái thiết bị: {}", e.getMessage());
             return false;
         }
     }
+    // ^^^^---------------------------------------^^^^
 
     /**
      * So sánh giá trị
@@ -402,9 +420,13 @@ public class RuleEngineService {
             case TURN_OFF_DEVICE:
                 return turnOffDevice(action);
             case SEND_NOTIFICATION:
-                return sendNotification(rule, action);
-            case SEND_EMAIL: // <<<< 3. THÊM CASE MỚI
-                return sendEmailForRule(rule, action);
+                // VVVV--- GỌI HÀM MỚI ---VVVV
+                return createRuleNotification(rule, action, false);
+            // ^^^^--------------------^^^^
+            case SEND_EMAIL:
+                // VVVV--- GỌI HÀM MỚI ---VVVV
+                return createRuleNotification(rule, action, true);
+            // ^^^^--------------------^^^^
             default:
                 return "Loại hành động không được hỗ trợ: " + action.getType();
         }
@@ -442,42 +464,42 @@ public class RuleEngineService {
     /**
      * Gửi thông báo
      */
-    private String sendNotification(Rule rule, Rule.RuleAction action) {
-        Map<String, Object> notification = new HashMap<>();
-        notification.put("type", "RULE_TRIGGERED");
-        notification.put("ruleName", rule.getName());
-        notification.put("message", action.getMessage());
-        notification.put("timestamp", LocalDateTime.now().toString());
+    // private String sendNotification(Rule rule, Rule.RuleAction action) {
+    // Map<String, Object> notification = new HashMap<>();
+    // notification.put("type", "RULE_TRIGGERED");
+    // notification.put("ruleName", rule.getName());
+    // notification.put("message", action.getMessage());
+    // notification.put("timestamp", LocalDateTime.now().toString());
 
-        webSocketService.sendAlert(rule.getFarm().getId(), notification);
+    // webSocketService.sendAlert(rule.getFarm().getId(), notification);
 
-        return "Đã gửi thông báo: " + action.getMessage();
-    }
+    // return "Đã gửi thông báo: " + action.getMessage();
+    // }
 
     /**
      * Gửi email
      */
-    private String sendEmailForRule(Rule rule, Rule.RuleAction action) {
-        User owner = rule.getFarm().getOwner();
-        if (owner == null) {
-            return "Lỗi: Không tìm thấy chủ nông trại.";
-        }
-        String title = "Quy tắc đã kích hoạt: " + rule.getName();
-        String link = "/rules/edit/" + rule.getId();
+    // private String sendEmailForRule(Rule rule, Rule.RuleAction action) {
+    // User owner = rule.getFarm().getOwner();
+    // if (owner == null) {
+    // return "Lỗi: Không tìm thấy chủ nông trại.";
+    // }
+    // String title = "Quy tắc đã kích hoạt: " + rule.getName();
+    // String link = "/rules/edit/" + rule.getId();
 
-        // VVVV--- SỬA LẠI ĐỂ GỌI NOTIFICATIONSERVICE ---VVVV
-        notificationService.createAndSendNotification(
-                owner,
-                title,
-                action.getMessage(),
-                Notification.NotificationType.RULE_TRIGGERED,
-                link,
-                false // Không cần gửi email thêm lần nữa
-        );
-        // ^^^^-----------------------------------------^^^^
+    // // VVVV--- SỬA LẠI ĐỂ GỌI NOTIFICATIONSERVICE ---VVVV
+    // notificationService.createAndSendNotification(
+    // owner,
+    // title,
+    // action.getMessage(),
+    // Notification.NotificationType.RULE_TRIGGERED,
+    // link,
+    // false // Không cần gửi email thêm lần nữa
+    // );
+    // // ^^^^-----------------------------------------^^^^
 
-        return "Đã tạo thông báo (từ quy tắc) cho: " + owner.getEmail();
-    }
+    // return "Đã tạo thông báo (từ quy tắc) cho: " + owner.getEmail();
+    // }
 
     /**
      * Lưu log thực thi
@@ -557,5 +579,39 @@ public class RuleEngineService {
             return false;
         }
     }
+
+    // VVVV--- HỢP NHẤT `sendNotification` VÀ `sendEmailForRule` THÀNH MỘT HÀM DUY
+    // NHẤT ---VVVV
+    /**
+     * Tạo thông báo (và gửi email nếu cần) cho một Rule được kích hoạt.
+     */
+    private String createRuleNotification(Rule rule, Rule.RuleAction action, boolean sendEmail) {
+        User owner = rule.getFarm().getOwner();
+        if (owner == null) {
+            return "Lỗi: Không tìm thấy chủ nông trại.";
+        }
+
+        String title = "Quy tắc đã kích hoạt: " + rule.getName();
+        String message = action.getMessage() != null && !action.getMessage().isEmpty()
+                ? action.getMessage()
+                : "Hành động " + action.getType() + " đã được thực hiện.";
+        String link = "/rules/edit/" + rule.getId();
+
+        notificationService.createAndSendNotification(
+                owner,
+                title,
+                message,
+                Notification.NotificationType.RULE_TRIGGERED,
+                link,
+                sendEmail // QUAN TRỌNG: Dùng cờ để quyết định gửi email
+        );
+
+        String logMessage = "Đã tạo thông báo (từ quy tắc) cho: " + owner.getEmail();
+        if (sendEmail) {
+            logMessage += " và đã yêu cầu gửi email.";
+        }
+        return logMessage;
+    }
+    // ^^^^---------------------------------------------------------------------------------^^^^
 
 }

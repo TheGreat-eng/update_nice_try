@@ -96,6 +96,11 @@ const AppLayout: React.FC<PropsWithChildren> = ({ children }) => {
         getItem('Sức khỏe Cây trồng', '/plant-health', <HeartPulse size={16} />),
         getItem('Quản lý Nông trại', '/farms', <Trees size={16} />),
         getItem('Quản lý Thiết bị', '/devices', <HardDrive size={16} />),
+        getItem('Phân tích Dữ liệu', '/analytics', <Settings size={16} />),
+        // <<<< THÊM MENU ITEM MỚI CHO TRANG NOTIFICATIONS >>>>
+        getItem('Thông báo', '/notifications', <BellOutlined style={{ fontSize: '16px' }} />),
+        // <<<<----------------------------------------->>>>
+
         isAdmin &&
         getItem('Admin Panel', 'sub_admin', <Crown size={16} />, [
             getItem('Dashboard', '/admin/dashboard'),

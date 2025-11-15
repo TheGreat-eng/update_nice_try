@@ -589,4 +589,75 @@ public class SensorDataService {
         }
     }
 
+    // VVVV--- THÊM PHƯƠNG THỨC MỚI NÀY ---VVVV
+    /**
+     * Lấy dữ liệu chuỗi thời gian cho nhiều thiết bị và nhiều trường dữ liệu.
+     * 
+     * @param deviceIds Danh sách các device_id cần truy vấn.
+     * @param fields    Danh sách các _field cần truy vấn (temperature, humidity,
+     *                  ...).
+     * @param start     Thời gian bắt đầu.
+     * @param end       Thời gian kết thúc.
+     * @param window    Khoảng thời gian tổng hợp (vd: "10m", "1h").
+     * @return Một Map với key là "deviceId_field" và value là danh sách các điểm dữ
+     *         liệu.
+     */
+    public Map<String, List<SensorDataDTO>> getMultiSeriesData(List<String> deviceIds, List<String> fields,
+            Instant start, Instant end, String window) {
+        if (deviceIds == null || deviceIds.isEmpty() || fields == null || fields.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        // Tạo các chuỗi filter cho Flux query
+        String deviceIdFilter = deviceIds.stream()
+                .map(id -> String.format("r.device_id == \"%s\"", id))
+                .collect(Collectors.joining(" or "));
+
+        String fieldFilter = fields.stream()
+                .map(field -> String.format("r._field == \"%s\"", field))
+                .collect(Collectors.joining(" or "));
+
+        String query = String.format(
+                "from(bucket: \"%s\")\n" +
+                        "  |> range(start: %s, stop: %s)\n" +
+                        "  |> filter(fn: (r) => r._measurement == \"sensor_data\")\n" +
+                        "  |> filter(fn: (r) => %s)\n" + // Filter theo device_id
+                        "  |> filter(fn: (r) => %s)\n" + // Filter theo _field
+                        "  |> aggregateWindow(every: %s, fn: mean, createEmpty: false)\n" +
+                        "  |> yield(name: \"mean\")",
+                influxDBConfig.getBucket(),
+                start.toString(),
+                end.toString(),
+                deviceIdFilter,
+                fieldFilter,
+                window);
+
+        log.info("Executing multi-series query for {} devices and {} fields.", deviceIds.size(), fields.size());
+
+        QueryApi queryApi = influxDBClient.getQueryApi();
+        List<FluxTable> tables = queryApi.query(query, influxDBConfig.getOrg());
+
+        // Nhóm kết quả lại theo "deviceId_field"
+        Map<String, List<SensorDataDTO>> result = new HashMap<>();
+        for (FluxTable table : tables) {
+            for (FluxRecord record : table.getRecords()) {
+                String deviceId = (String) record.getValueByKey("device_id");
+                String field = record.getField();
+                String key = deviceId + "_" + field;
+
+                result.putIfAbsent(key, new ArrayList<>());
+
+                SensorDataDTO dto = SensorDataDTO.builder()
+                        .timestamp(record.getTime())
+                        .avgValue(
+                                record.getValue() instanceof Number ? ((Number) record.getValue()).doubleValue() : null)
+                        .build();
+
+                result.get(key).add(dto);
+            }
+        }
+        return result;
+    }
+    // ^^^^---------------------------------------------------^^^^
+
 }

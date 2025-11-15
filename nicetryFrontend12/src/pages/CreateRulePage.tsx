@@ -1,6 +1,6 @@
 // src/pages/CreateRulePage.tsx
 import React, { useEffect, useState, useMemo } from 'react';
-import { Form, Input, Select, Space, Card, Typography, message, Spin } from 'antd';
+import { Form, Input, Card, Typography, message, Spin } from 'antd';
 import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { createRule } from '../api/ruleService';
@@ -12,10 +12,10 @@ import { getDevicesByFarm } from '../api/deviceService';
 import { Result, Button } from 'antd'; // <<<< THÊM IMPORT
 import { getFarms } from '../api/farmService';
 import { useQuery } from '@tanstack/react-query';
-
+import { ConditionItem } from '../components/rules/ConditionItem'; // VVVV--- IMPORT COMPONENT MỚI ---VVVV
+import { ActionItem } from '../components/rules/ActionItem'; // VVVV--- IMPORT COMPONENT MỚI ---VVVV
 
 const { Title } = Typography;
-const { Option } = Select;
 
 const CreateRulePage: React.FC = () => {
     const { farmId } = useFarm();
@@ -125,39 +125,20 @@ const CreateRulePage: React.FC = () => {
                         {(fields, { add, remove }) => (
                             <>
                                 {fields.map(({ key, name, ...restField }) => (
-                                    <Space key={key} style={{ display: 'flex', marginBottom: 8 }} align="baseline">
-                                        <Form.Item {...restField} name={[name, 'type']} initialValue="SENSOR_VALUE" noStyle>
-                                            <Input type="hidden" />
-                                        </Form.Item>
-                                        {/* ✅ THÊM: Select thiết bị sensor */}
-                                        <Form.Item {...restField} name={[name, 'deviceId']} rules={[{ required: true, message: 'Chọn cảm biến!' }]}>
-                                            <Select placeholder="Chọn cảm biến" style={{ width: 150 }}>
-                                                {sensors.map(s => <Option key={s.deviceId} value={s.deviceId}>{s.deviceId}</Option>)}
-                                                {/* ✅ SỬA: Dùng s.deviceId thay vì s.name */}
-                                            </Select>
-                                        </Form.Item>
-                                        <span> có </span>
-                                        <Form.Item {...restField} name={[name, 'field']} rules={[{ required: true }]}>
-                                            <Select style={{ width: 130 }}>
-                                                <Option value="temperature">nhiệt độ</Option>
-                                                <Option value="humidity">độ ẩm KK</Option>
-                                                <Option value="soil_moisture">độ ẩm đất</Option>
-                                            </Select>
-                                        </Form.Item>
-                                        <Form.Item {...restField} name={[name, 'operator']} rules={[{ required: true }]}>
-                                            <Select style={{ width: 120 }}>
-                                                <Option value="LESS_THAN">nhỏ hơn</Option>
-                                                <Option value="GREATER_THAN">lớn hơn</Option>
-                                            </Select>
-                                        </Form.Item>
-                                        <Form.Item {...restField} name={[name, 'value']} rules={[{ required: true }]}>
-                                            <Input placeholder="Giá trị" style={{ width: 80 }} />
-                                        </Form.Item>
+                                    <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        {/* VVVV--- SỬ DỤNG COMPONENT MỚI ---VVVV */}
+                                        <ConditionItem
+                                            form={form}
+                                            name={name}
+                                            restField={restField}
+                                            sensors={sensors}
+                                        />
+                                        {/* ^^^^----------------------------^^^^ */}
                                         <MinusCircleOutlined onClick={() => remove(name)} />
-                                    </Space>
+                                    </div>
                                 ))}
                                 <Form.Item>
-                                    <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
+                                    <Button type="dashed" onClick={() => add({ type: 'SENSOR_VALUE' })} block icon={<PlusOutlined />}>
                                         Thêm điều kiện
                                     </Button>
                                 </Form.Item>
@@ -171,33 +152,25 @@ const CreateRulePage: React.FC = () => {
                         {(fields, { add, remove }) => (
                             <>
                                 {fields.map(({ key, name, ...restField }) => (
-                                    <Space key={key} style={{ display: 'flex', marginBottom: 8 }} align="baseline">
-                                        <Form.Item {...restField} name={[name, 'type']} rules={[{ required: true }]}>
-                                            <Select style={{ width: 120 }}>
-                                                <Option value="TURN_ON_DEVICE">Bật thiết bị</Option>
-                                                <Option value="TURN_OFF_DEVICE">Tắt thiết bị</Option>
-                                            </Select>
-                                        </Form.Item>
-                                        {/* ✅ THÊM: Select thiết bị actuator */}
-                                        <Form.Item {...restField} name={[name, 'deviceId']} rules={[{ required: true, message: 'Chọn thiết bị!' }]}>
-                                            <Select placeholder="Chọn thiết bị" style={{ width: 150 }}>
-                                                {actuators.map(a => <Option key={a.deviceId} value={a.deviceId}>{a.deviceId}</Option>)}
-                                                {/* ✅ SỬA: Dùng a.deviceId thay vì a.name */}
-                                            </Select>
-                                        </Form.Item>
-                                        <span> trong </span>
-                                        <Form.Item {...restField} name={[name, 'durationSeconds']}>
-                                            <Input placeholder="Số giây" style={{ width: 80 }} />
-                                        </Form.Item>
-                                        <MinusCircleOutlined onClick={() => remove(name)} />
-                                    </Space>
+                                    // VVVV--- THAY THẾ TOÀN BỘ LOGIC CŨ BẰNG ĐOẠN NÀY ---VVVV
+                                    <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                                        <ActionItem
+                                            form={form}
+                                            name={name}
+                                            restField={restField}
+                                            actuators={actuators}
+                                        />
+                                        <MinusCircleOutlined onClick={() => remove(name)} style={{ marginTop: 8 }} />
+                                    </div>
+                                    // ^^^^-------------------------------------------------^^^^
                                 ))}
                                 <Form.Item>
-                                    <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
+                                    <Button type="dashed" onClick={() => add({ type: 'TURN_ON_DEVICE' })} block icon={<PlusOutlined />}>
                                         Thêm hành động
                                     </Button>
                                 </Form.Item>
                             </>
+
                         )}
                     </Form.List>
                 </Card>
@@ -211,7 +184,7 @@ const CreateRulePage: React.FC = () => {
                     </Button>
                 </Form.Item>
             </Form>
-        </div>
+        </div >
     );
 };
 

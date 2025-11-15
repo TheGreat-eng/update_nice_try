@@ -4,13 +4,11 @@ import com.example.iotserver.dto.DeviceDTO;
 import com.example.iotserver.dto.SensorDataDTO;
 import com.example.iotserver.enums.DeviceStatus;
 import com.example.iotserver.enums.DeviceType;
-import com.example.iotserver.entity.Device;
-import com.example.iotserver.entity.Farm;
 import com.example.iotserver.repository.DeviceRepository;
 import com.example.iotserver.repository.FarmRepository;
 import com.example.iotserver.repository.ZoneRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+// <<<< THÊM IMPORT
 import com.example.iotserver.entity.*;
 
 import lombok.RequiredArgsConstructor;
@@ -29,8 +27,6 @@ import org.springframework.cache.annotation.Cacheable; // <-- THÊM IMPORT
 import org.springframework.cache.annotation.CacheEvict; // <-- THÊM IMPORT
 import java.time.temporal.ChronoUnit; // <<<< 1. THÊM IMPORT
 
-import com.example.iotserver.entity.User; // <<<< THÊM IMPORT
-import com.example.iotserver.entity.Zone;
 import com.example.iotserver.enums.FarmRole; // <<<< THÊM IMPORT
 import com.example.iotserver.exception.ResourceNotFoundException;
 
@@ -261,35 +257,52 @@ public class DeviceService {
     // SỬA LẠI HÀM NÀY
     @Transactional
     public void checkStaleDevices() {
-        // Giả sử 5 phút không có tín hiệu là offline
         LocalDateTime threshold = LocalDateTime.now().minusMinutes(5);
         List<Device> staleDevices = deviceRepository.findStaleDevices(threshold);
 
         for (Device device : staleDevices) {
+            boolean statusChanged = false;
+            // Bước 1: Cập nhật trạng thái nếu cần
             if (device.getStatus() == DeviceStatus.ONLINE) {
                 device.setStatus(DeviceStatus.OFFLINE);
-                deviceRepository.save(device);
+                statusChanged = true;
                 log.warn("Device {} marked as offline due to inactivity", device.getDeviceId());
-
-                // ===> THÊM DÒNG NÀY ĐỂ GỬI WEBSOCKET <===
                 webSocketService.sendDeviceStatus(device.getFarm().getId(), device.getDeviceId(), "OFFLINE");
             }
-            // VVVV--- THAY THẾ VIỆC GỌI EMAILSERVICE BẰNG NOTIFICATIONSERVICE ---VVVV
-            User owner = device.getFarm().getOwner();
-            String title = String.format("Thiết bị '%s' đã offline", device.getName());
-            String message = String.format("Thiết bị '%s' (ID: %s) tại nông trại '%s' đã mất kết nối.",
-                    device.getName(), device.getDeviceId(), device.getFarm().getName());
-            String link = "/devices"; // Hoặc link chi tiết tới thiết bị
 
-            notificationService.createAndSendNotification(
-                    owner,
-                    title,
-                    message,
-                    Notification.NotificationType.DEVICE_STATUS,
-                    link,
-                    true // Gửi email);
-            );
-            // ^^^^-------------------------------------------------------------------^^^^
+            // Bước 2: Logic quyết định có gửi thông báo hay không (COOLDOWN)
+            // Gửi thông báo nếu:
+            // 1. Chưa từng gửi (lastOfflineNotificationAt is null)
+            // 2. Lần gửi cuối đã cách đây hơn 6 tiếng (tránh spam)
+            boolean shouldNotify = device.getLastOfflineNotificationAt() == null ||
+                    ChronoUnit.HOURS.between(device.getLastOfflineNotificationAt(), LocalDateTime.now()) >= 6;
+
+            if (shouldNotify) {
+                User owner = device.getFarm().getOwner();
+                String title = String.format("Thiết bị '%s' đã offline", device.getName());
+                String message = String.format("Thiết bị '%s' (ID: %s) tại nông trại '%s' đã mất kết nối quá 5 phút.",
+                        device.getName(), device.getDeviceId(), device.getFarm().getName());
+                String link = "/devices";
+
+                notificationService.createAndSendNotification(
+                        owner,
+                        title,
+                        message,
+                        Notification.NotificationType.DEVICE_STATUS,
+                        link,
+                        true // Gửi email
+                );
+
+                // Bước 3: Cập nhật thời gian đã gửi thông báo
+                device.setLastOfflineNotificationAt(LocalDateTime.now());
+                log.info("Đã gửi thông báo offline cho thiết bị {} và cập nhật cooldown.", device.getDeviceId());
+
+                // Lưu lại thay đổi (bao gồm cả status nếu có và thời gian thông báo)
+                deviceRepository.save(device);
+            } else if (statusChanged) {
+                // Nếu chỉ có status thay đổi mà không gửi thông báo, vẫn cần lưu lại
+                deviceRepository.save(device);
+            }
         }
     }
 

@@ -1,37 +1,33 @@
 // src/pages/EditRulePage.tsx
-
 import React, { useEffect, useState, useMemo } from 'react';
-import { Form, Input, Select, Space, Card, Typography, message, Spin, Alert } from 'antd';
+import { Form, Input, Card, Typography, message, Spin, Alert, Button } from 'antd';
 import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
-import { getRuleById, updateRule } from '../api/ruleService';
-import type { Rule } from '../types/rule';
-import { useFarm } from '../context/FarmContext';
-import { getDevicesByFarm } from '../api/deviceService';
-import type { Device } from '../types/device';
-
-import { Result, Button } from 'antd'; // <<<< THÊM IMPORT
-import { getFarms } from '../api/farmService';
 import { useQuery } from '@tanstack/react-query';
 
+// API Services và Types
+import { getRuleById, updateRule } from '../api/ruleService';
+import { getDevicesByFarm } from '../api/deviceService';
+import { getFarms } from '../api/farmService';
+import type { Rule } from '../types/rule';
+
+// Custom Components
+import { ConditionItem } from '../components/rules/ConditionItem';
+import { ActionItem } from '../components/rules/ActionItem';
+
+// Context
+import { useFarm } from '../context/FarmContext';
 
 const { Title } = Typography;
-const { Option } = Select;
 
 const EditRulePage: React.FC = () => {
     const navigate = useNavigate();
     const { ruleId } = useParams<{ ruleId: string }>();
-    const { farmId } = useFarm(); // Lấy farmId từ context
+    const { farmId } = useFarm();
     const [form] = Form.useForm();
-    const [loading, setLoading] = useState(true);
-    const [submitting, setSubmitting] = useState(false); // Thêm state cho lúc submit
-    const [error, setError] = useState<string | null>(null);
-    // State để lưu danh sách thiết bị
-    const [sensors, setSensors] = useState<Device[]>([]);
-    const [actuators, setActuators] = useState<Device[]>([]);
+    const [submitting, setSubmitting] = useState(false);
 
-
-    // <<<< THÊM LOGIC KIỂM TRA QUYỀN >>>>
+    // 1. Fetch quyền của user
     const { data: farms, isLoading: isLoadingFarms } = useQuery({
         queryKey: ['farms'],
         queryFn: () => getFarms().then(res => res.data.data),
@@ -45,72 +41,44 @@ const EditRulePage: React.FC = () => {
 
     const canManage = currentUserPermission === 'OWNER' || currentUserPermission === 'OPERATOR';
 
+    // 2. Fetch dữ liệu của Rule cần sửa
+    const { data: ruleData, isLoading: isLoadingRule, isError: isRuleError } = useQuery({
+        queryKey: ['rule', ruleId],
+        queryFn: () => getRuleById(Number(ruleId)).then(res => res.data.data),
+        enabled: !!ruleId,
+    });
 
+    // 3. Fetch danh sách thiết bị của farm
+    const { data: devices, isLoading: isLoadingDevices } = useQuery({
+        queryKey: ['devices', farmId],
+        queryFn: () => getDevicesByFarm(farmId!).then(res => res.data.data),
+        enabled: !!farmId,
+    });
 
-    // Effect để tải dữ liệu quy tắc và danh sách thiết bị
+    // Tách devices thành sensors và actuators
+    const sensors = useMemo(() => devices?.filter(d => d.type.startsWith('SENSOR')) || [], [devices]);
+    const actuators = useMemo(() => devices?.filter(d => d.type.startsWith('ACTUATOR')) || [], [devices]);
+
+    // 4. Điền dữ liệu vào form khi đã fetch xong
     useEffect(() => {
-        if (!ruleId || !farmId) return;
-        if (canManage && farmId) {
-            const fetchData = async () => {
-                setLoading(true);
-                try {
-                    // Tải đồng thời cả hai
-                    const [ruleResponse, devicesResponse] = await Promise.all([
-                        getRuleById(parseInt(ruleId)),
-                        getDevicesByFarm(farmId)
-                    ]);
-
-                    // Xử lý dữ liệu quy tắc
-                    form.setFieldsValue(ruleResponse.data.data);
-
-                    // Xử lý danh sách thiết bị
-                    const allDevices = devicesResponse.data.data;
-                    setSensors(allDevices.filter(d => d.type.startsWith('SENSOR')));
-                    setActuators(allDevices.filter(d => d.type.startsWith('ACTUATOR')));
-
-                    setError(null);
-                } catch (err) {
-                    console.error("Failed to fetch data:", err);
-                    setError("Không thể tải thông tin quy tắc hoặc danh sách thiết bị.");
-                } finally {
-                    setLoading(false);
-                }
-            };
-
-            fetchData();
+        if (ruleData) {
+            form.setFieldsValue(ruleData);
         }
-    }, [ruleId, farmId, form, canManage]);
+    }, [ruleData, form]);
 
-
-    if (isLoadingFarms) {
-        return <Spin tip="Đang kiểm tra quyền..." />;
-    }
-
-    if (!canManage) {
-        return (
-            <Result
-                status="403"
-                title="403 - Không có quyền truy cập"
-                subTitle="Xin lỗi, bạn không có quyền thực hiện hành động này."
-                extra={<Button type="primary" onClick={() => navigate('/rules')}>Quay về danh sách</Button>}
-            />
-        );
-    }
-
+    // 5. Xử lý submit
     const onFinish = async (values: any) => {
         if (!ruleId) return;
         setSubmitting(true);
 
-        // Lấy lại giá trị enabled vì nó không có trong form
-        const currentRuleData = form.getFieldsValue(true);
         const updatedRule: Rule = {
             ...values,
-            id: parseInt(ruleId),
-            enabled: currentRuleData.enabled,
+            id: Number(ruleId),
+            enabled: ruleData?.enabled ?? true, // Giữ lại trạng thái enabled cũ
         };
 
         try {
-            await updateRule(parseInt(ruleId), updatedRule);
+            await updateRule(Number(ruleId), updatedRule);
             message.success('Cập nhật quy tắc thành công!');
             navigate('/rules');
         } catch (error) {
@@ -120,24 +88,25 @@ const EditRulePage: React.FC = () => {
         }
     };
 
-    if (loading) {
-        return (
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
-                <Spin tip="Đang tải quy tắc..." size="large" />
-            </div>
-        );
+    // ---- Render Logic ----
+    if (isLoadingFarms || isLoadingRule || isLoadingDevices) {
+        return <div style={{ textAlign: 'center', padding: 50 }}><Spin tip="Đang tải dữ liệu..." size="large" /></div>;
     }
 
-    if (error) {
-        return <Alert message="Lỗi" description={error} type="error" showIcon />;
+    if (!canManage) {
+        return <Alert message="Không có quyền" description="Bạn không có quyền chỉnh sửa quy tắc này." type="error" showIcon />;
+    }
+
+    if (isRuleError) {
+        return <Alert message="Lỗi" description="Không thể tải thông tin quy tắc." type="error" showIcon />;
     }
 
     return (
         <div>
             <Title level={2}>Sửa Quy tắc</Title>
-            <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ conditions: [{}], actions: [{}] }}>
+            <Form form={form} layout="vertical" onFinish={onFinish}>
                 <Card title="Thông tin chung" style={{ marginBottom: 16 }}>
-                    <Form.Item name="name" label="Tên quy tắc" rules={[{ required: true, message: 'Vui lòng nhập tên!' }]}>
+                    <Form.Item name="name" label="Tên quy tắc" rules={[{ required: true }]}>
                         <Input />
                     </Form.Item>
                     <Form.Item name="description" label="Mô tả">
@@ -150,41 +119,18 @@ const EditRulePage: React.FC = () => {
                         {(fields, { add, remove }) => (
                             <>
                                 {fields.map(({ key, name, ...restField }) => (
-                                    <Space key={key} style={{ display: 'flex', marginBottom: 8, alignItems: 'start' }} align="baseline">
-                                        <Form.Item {...restField} name={[name, 'type']} initialValue="SENSOR_VALUE" noStyle><Input type="hidden" /></Form.Item>
-
-                                        {/* VVVV--- ĐÃ THAY THẾ BẰNG SELECT ---VVVV */}
-                                        <Form.Item {...restField} name={[name, 'deviceId']} label="Cảm biến" rules={[{ required: true, message: 'Chọn cảm biến!' }]}>
-                                            <Select placeholder="Chọn cảm biến" style={{ width: 200 }} showSearch optionFilterProp="children">
-                                                {sensors.map(s => <Option key={s.deviceId} value={s.deviceId}>{s.name} ({s.deviceId})</Option>)}
-                                            </Select>
-                                        </Form.Item>
-                                        {/* ^^^^---------------------------------^^^^ */}
-
-                                        <Form.Item {...restField} name={[name, 'field']} label="Chỉ số" rules={[{ required: true }]}>
-                                            <Select style={{ width: 130 }}>
-                                                <Option value="temperature">Nhiệt độ</Option>
-                                                <Option value="humidity">Độ ẩm KK</Option>
-                                                <Option value="soil_moisture">Độ ẩm đất</Option>
-                                                <Option value="light_intensity">Ánh sáng</Option>
-                                                <Option value="soilPH">pH đất</Option>
-                                            </Select>
-                                        </Form.Item>
-                                        <Form.Item {...restField} name={[name, 'operator']} label="Toán tử" rules={[{ required: true }]}>
-                                            <Select style={{ width: 120 }}>
-                                                <Option value="LESS_THAN">Nhỏ hơn</Option>
-                                                <Option value="GREATER_THAN">Lớn hơn</Option>
-                                                <Option value="EQUALS">Bằng</Option>
-                                            </Select>
-                                        </Form.Item>
-                                        <Form.Item {...restField} name={[name, 'value']} label="Giá trị" rules={[{ required: true }]}>
-                                            <Input placeholder="VD: 30" style={{ width: 100 }} />
-                                        </Form.Item>
-                                        <MinusCircleOutlined onClick={() => remove(name)} style={{ marginTop: 38 }} />
-                                    </Space>
+                                    <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <ConditionItem
+                                            form={form}
+                                            name={name}
+                                            restField={restField}
+                                            sensors={sensors}
+                                        />
+                                        <MinusCircleOutlined onClick={() => remove(name)} />
+                                    </div>
                                 ))}
                                 <Form.Item>
-                                    <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
+                                    <Button type="dashed" onClick={() => add({ type: 'SENSOR_VALUE' })} block icon={<PlusOutlined />}>
                                         Thêm điều kiện
                                     </Button>
                                 </Form.Item>
@@ -198,31 +144,18 @@ const EditRulePage: React.FC = () => {
                         {(fields, { add, remove }) => (
                             <>
                                 {fields.map(({ key, name, ...restField }) => (
-                                    <Space key={key} style={{ display: 'flex', marginBottom: 8, alignItems: 'start' }} align="baseline">
-                                        <Form.Item {...restField} name={[name, 'type']} label="Hành động" rules={[{ required: true }]}>
-                                            <Select style={{ width: 150 }}>
-                                                <Option value="TURN_ON_DEVICE">Bật thiết bị</Option>
-                                                <Option value="TURN_OFF_DEVICE">Tắt thiết bị</Option>
-                                                <Option value="SEND_EMAIL">Gửi Email</Option>
-                                            </Select>
-                                        </Form.Item>
-
-                                        {/* VVVV--- ĐÃ THAY THẾ BẰNG SELECT ---VVVV */}
-                                        <Form.Item {...restField} name={[name, 'deviceId']} label="Thiết bị" rules={[{ required: true, message: 'Chọn thiết bị!' }]}>
-                                            <Select placeholder="Chọn thiết bị" style={{ width: 200 }} showSearch optionFilterProp="children">
-                                                {actuators.map(a => <Option key={a.deviceId} value={a.deviceId}>{a.name} ({a.deviceId})</Option>)}
-                                            </Select>
-                                        </Form.Item>
-                                        {/* ^^^^---------------------------------^^^^ */}
-
-                                        <Form.Item {...restField} name={[name, 'durationSeconds']} label="Thời gian (giây)">
-                                            <Input placeholder="VD: 300" style={{ width: 120 }} />
-                                        </Form.Item>
-                                        <MinusCircleOutlined onClick={() => remove(name)} style={{ marginTop: 38 }} />
-                                    </Space>
+                                    <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                                        <ActionItem
+                                            form={form}
+                                            name={name}
+                                            restField={restField}
+                                            actuators={actuators}
+                                        />
+                                        <MinusCircleOutlined onClick={() => remove(name)} style={{ marginTop: 8 }} />
+                                    </div>
                                 ))}
                                 <Form.Item>
-                                    <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
+                                    <Button type="dashed" onClick={() => add({ type: 'TURN_ON_DEVICE' })} block icon={<PlusOutlined />}>
                                         Thêm hành động
                                     </Button>
                                 </Form.Item>
